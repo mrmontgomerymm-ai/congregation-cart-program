@@ -24,13 +24,46 @@ jobs:
       - name: Install the Firebase tools
         run: npm install -g firebase-tools
 
+      # Checks the secrets first and says plainly what is wrong, instead of
+      # failing later with a confusing "have you run firebase login?".
+      - name: Check the secrets are set
+        env:
+          SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          PID: ${{ secrets.FIREBASE_PROJECT_ID }}
+        run: |
+          fail=0
+          if [ -z "$SA" ]; then
+            echo "::error::Secret FIREBASE_SERVICE_ACCOUNT is missing or empty."
+            echo "Add it under Settings -> Secrets and variables -> Actions."
+            echo "Paste the WHOLE service-account .json file, including the outer { }."
+            fail=1
+          else
+            printf '%s' "$SA" > /tmp/sa.json
+            if ! python3 -c "import json,sys; json.load(open('/tmp/sa.json'))" 2>/dev/null; then
+              echo "::error::FIREBASE_SERVICE_ACCOUNT is not valid JSON."
+              echo "It must be the entire .json file contents, not a path or a fragment."
+              fail=1
+            else
+              echo "Service account JSON parsed OK."
+              python3 -c "import json;d=json.load(open('/tmp/sa.json'));print('  client_email:',d.get('client_email','MISSING'));print('  project_id  :',d.get('project_id','MISSING'));print('  type        :',d.get('type','MISSING'))"
+            fi
+          fi
+          if [ -z "$PID" ]; then
+            echo "::error::Secret FIREBASE_PROJECT_ID is missing or empty (for example: cart-program)."
+            fail=1
+          else
+            echo "Project id secret is set."
+          fi
+          exit $fail
+
       - name: Deploy hosting and security rules
         env:
-          GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/service-account.json
+          SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          GOOGLE_APPLICATION_CREDENTIALS: /tmp/sa.json
         run: |
-          echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > "$GOOGLE_APPLICATION_CREDENTIALS"
+          printf '%s' "$SA" > /tmp/sa.json
           firebase deploy \
             --only hosting,firestore:rules,firestore:indexes \
             --project "${{ secrets.FIREBASE_PROJECT_ID }}" \
             --non-interactive
-          rm -f "$GOOGLE_APPLICATION_CREDENTIALS"
+          rm -f /tmp/sa.json
