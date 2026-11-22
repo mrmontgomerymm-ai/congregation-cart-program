@@ -9,10 +9,10 @@
 // protected by the security rules in firestore.rules, not by hiding these.
 // ---------------------------------------------------------------------------
 export const firebaseConfig = {
-  apiKey:            "PASTE_API_KEY_HERE",
-  authDomain:        "PASTE_PROJECT_ID_HERE.firebaseapp.com",
-  projectId:         "PASTE_PROJECT_ID_HERE",
-  storageBucket:     "PASTE_PROJECT_ID_HERE.appspot.com",
-  messagingSenderId: "PASTE_SENDER_ID_HERE",
-  appId:             "PASTE_APP_ID_HERE"
+  apiKey:            "AIzaSyCRx9t1zpfhN1CvbvXBf8v2dXDwGqeE0Mg",
+  authDomain:        "cart-program.firebaseapp.com",
+  projectId:         "cart-program",
+  storageBucket:     "cart-program.firebasestorage.app",
+  messagingSenderId: "682449147735",
+  appId:             "1:682449147735:web:66a531130eddcd47621012"
 };
