@@ -1,0 +1,142 @@
+rules_version = '2';
+
+// Congregation Public Cart System — Firestore security rules
+//
+// SECURITY MODEL (free Spark plan — no Cloud Functions)
+// - Credentials are verified by Firebase Authentication on Google's servers.
+//   The PIN is never checked in the browser and no PIN hash is ever readable.
+// - These rules are enforced by Google, not by the app, so they cannot be
+//   bypassed by editing the page or using the browser console.
+// - Personal data (phone numbers, names, history) is never publicly readable.
+//   Only cart availability is public, so the home dashboard works signed-out.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------- helpers ----------
+    function signedIn() { return request.auth != null; }
+    function myUid()    { return request.auth.uid; }
+    function myUser()   { return get(/databases/$(database)/documents/users/$(myUid())).data; }
+    function isAdmin() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(myUid()))
+        && myUser().admin == true;
+    }
+    // A person may only act once an administrator has approved them.
+    // Profiles created before approval existed have no 'approved' field and
+    // are treated as already approved, so nobody is locked out by the change.
+    function isActiveUser() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(myUid()))
+        && myUser().active == true
+        && (!('approved' in myUser()) || myUser().approved == true);
+    }
+    function changed(fields) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasAny(fields);
+    }
+
+    // ---------- users ----------
+    // You may create only your OWN profile and may never make yourself an admin.
+    // Promote the first admin by hand in the Firebase Console (see SETUP.md).
+    match /users/{uid} {
+      allow read:   if signedIn() && (uid == myUid() || isAdmin());
+      // You may create only your own profile, never as an admin, and never
+      // pre-approved — approval is an administrator's decision.
+      allow create: if signedIn() && uid == myUid()
+                    && request.resource.data.admin == false
+                    && request.resource.data.active == true
+                    && request.resource.data.approved == false
+                    && request.resource.data.name is string
+                    && request.resource.data.phone is string
+                    && request.resource.data.congregation is string;
+      // You may fix your own name/congregation, but never the admin flag.
+      allow update: if isAdmin()
+                    || (signedIn() && uid == myUid() && !changed(['admin', 'active', 'approved']));
+      allow delete: if isAdmin();
+    }
+
+    // ---------- carts ----------
+    // Readable by everyone so the public home dashboard shows availability.
+    match /carts/{cartId} {
+      allow read: if true;
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin()
+        // CHECK OUT — cart must currently be Available and assigned to yourself.
+        || (isActiveUser()
+            && resource.data.status == 'Available'
+            && resource.data.currentUserId == null
+            && request.resource.data.status == 'Checked Out'
+            && request.resource.data.currentUserId == myUid()
+            && request.resource.data.number == resource.data.number
+            && request.resource.data.congregation == resource.data.congregation)
+        // RETURN — only the person holding the cart may return it.
+        || (isActiveUser()
+            && resource.data.currentUserId == myUid()
+            && request.resource.data.status == 'Available'
+            && request.resource.data.currentUserId == null
+            && request.resource.data.number == resource.data.number
+            && request.resource.data.congregation == resource.data.congregation);
+    }
+
+    // ---------- transactions (cart history — never deleted) ----------
+    match /transactions/{txId} {
+      allow read:   if isActiveUser();
+      allow create: if isActiveUser()
+                    && request.resource.data.userId == myUid()
+                    && request.resource.data.status == 'Checked Out'
+                    && request.resource.data.returnAt == null;
+      allow update: if isAdmin()
+                    || (isActiveUser()
+                        && resource.data.userId == myUid()
+                        && resource.data.returnAt == null
+                        && request.resource.data.userId == resource.data.userId
+                        && request.resource.data.cartId == resource.data.cartId
+                        && request.resource.data.status == 'Returned');
+      allow delete: if false;
+    }
+
+    // ---------- posters (Feature Poster Index) ----------
+    // Everyone may read. Only admins may edit titles, images, months,
+    // language, series, and Total Inventory.
+    match /posters/{posterId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    // ---------- poster checkouts (poster-only, separate from carts) ----------
+    // Readable so shared copy availability can be computed.
+    match /posterCheckouts/{id} {
+      allow read: if true;
+      allow create: if isActiveUser()
+                    && request.resource.data.userId == myUid()
+                    && request.resource.data.status == 'Checked Out'
+                    && request.resource.data.returnAt == null;
+      allow update: if isAdmin()
+                    || (isActiveUser()
+                        && resource.data.userId == myUid()
+                        && resource.data.returnAt == null
+                        && request.resource.data.posterKey == resource.data.posterKey
+                        && request.resource.data.status == 'Returned');
+      allow delete: if false;
+    }
+
+    // ---------- settings ----------
+    // App name, congregations, overdue days, service-year start month, languages.
+    match /settings/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // ---------- issue reports ----------
+    match /issues/{id} {
+      allow read: if isAdmin();
+      allow create: if signedIn()
+                    && request.resource.data.description is string
+                    && request.resource.data.description.size() > 0
+                    && request.resource.data.description.size() <= 3000;
+      allow update, delete: if isAdmin();
+    }
+
+    // Everything not matched above is denied by default.
+  }
+}

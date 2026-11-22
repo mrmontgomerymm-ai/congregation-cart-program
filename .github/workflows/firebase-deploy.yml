@@ -1,0 +1,36 @@
+# Deploys the Congregation Cart Program to Firebase Hosting.
+#
+# Runs automatically on every push to main — including edits made straight from
+# the GitHub website — so the live site updates itself a minute or two later.
+name: Deploy to Firebase
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:        # lets you run it by hand from the Actions tab
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get the code
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install the Firebase tools
+        run: npm install -g firebase-tools
+
+      - name: Deploy hosting and security rules
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/service-account.json
+        run: |
+          echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > "$GOOGLE_APPLICATION_CREDENTIALS"
+          firebase deploy \
+            --only hosting,firestore:rules,firestore:indexes \
+            --project "${{ secrets.FIREBASE_PROJECT_ID }}" \
+            --non-interactive
+          rm -f "$GOOGLE_APPLICATION_CREDENTIALS"

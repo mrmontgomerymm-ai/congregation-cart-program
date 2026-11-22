@@ -1,0 +1,2239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Congregation Cart Program</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<!-- Root-level paths: iOS also looks for these automatically, so the Home Screen
+     icon still works even if a link tag or subfolder is missed. -->
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+<link rel="apple-touch-icon-precomposed" href="/apple-touch-icon-precomposed.png">
+<link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
+<link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png">
+<link rel="shortcut icon" href="/favicon.ico">
+<meta name="theme-color" content="#1a202c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Cart Program">
+<script>
+  // Apply the saved theme before first paint so there is no flash of the wrong colours.
+  (function(){
+    try{
+      var t=localStorage.getItem('cartTheme'), m=localStorage.getItem('cartMode');
+      if(t) document.documentElement.setAttribute('data-theme',t);
+      if(m==='dark'||(m===null&&window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches))
+        document.documentElement.setAttribute('data-mode','dark');
+    }catch(e){}
+  })();
+</script>
+<style>
+    /* ============================================================
+       THEME TOKENS — light by default, overridden for dark mode
+       and for each accent theme. Everything below uses variables,
+       so a theme change is one attribute on <html>.
+       ============================================================ */
+    :root{
+      --accent:#3a67ac; --accent-2:#2f5390; --accent-soft:#eaf1fb; --accent-ink:#fff;
+      --bg:#eef1f6; --bg-2:#e4e9f1;
+      --surface:#ffffff; --surface-2:#f7f9fc; --surface-3:#eef2f7;
+      --text:#141a23; --text-2:#5a6575; --border:#dde3ec;
+      --ok:#1f8a4c; --ok-2:#2fb567; --danger:#c62828; --danger-2:#e8635b; --warn:#b45309;
+      --chrome:#1a202c; --chrome-2:#252d3b; --chrome-text:#ffffff; --chrome-sub:#aab4c4;
+      --radius:18px; --radius-sm:12px;
+      --shadow-sm:0 1px 2px rgba(16,24,40,.06);
+      --shadow:0 4px 12px rgba(16,24,40,.08), 0 1px 3px rgba(16,24,40,.05);
+      --shadow-lg:0 18px 40px rgba(16,24,40,.16), 0 6px 14px rgba(16,24,40,.08);
+      --shadow-accent:0 6px 16px rgba(58,103,172,.30);
+      --nav-h:76px;
+    }
+    html[data-theme="teal"]{ --accent:#0f766e; --accent-2:#0b5e57; --accent-soft:#e6faf6; --shadow-accent:0 6px 16px rgba(15,118,110,.30); }
+    html[data-theme="plum"]{ --accent:#6d28d9; --accent-2:#5b21b6; --accent-soft:#f1ebfe; --shadow-accent:0 6px 16px rgba(109,40,217,.30); }
+    html[data-theme="forest"]{ --accent:#166534; --accent-2:#14532d; --accent-soft:#e8f6ec; --shadow-accent:0 6px 16px rgba(22,101,52,.30); }
+    html[data-theme="slate"]{ --accent:#334155; --accent-2:#1e293b; --accent-soft:#eef2f7; --shadow-accent:0 6px 16px rgba(51,65,85,.30); }
+
+    html[data-mode="dark"]{
+      --bg:#0f141c; --bg-2:#141b25;
+      --surface:#1a2230; --surface-2:#212b3b; --surface-3:#27334593;
+      --text:#eef2f8; --text-2:#9fabbd; --border:#2c3849;
+      --accent-soft:#1e2a3d;
+      --chrome:#0b0f16; --chrome-2:#141b25; --chrome-sub:#93a0b3;
+      --shadow-sm:0 1px 2px rgba(0,0,0,.40);
+      --shadow:0 6px 18px rgba(0,0,0,.45);
+      --shadow-lg:0 20px 44px rgba(0,0,0,.55);
+    }
+
+    *{box-sizing:border-box;}
+    html{-webkit-text-size-adjust:100%; background:var(--bg);}
+    body{
+      margin:0; font-size:18px; line-height:1.5; background:var(--bg); color:var(--text);
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+      -webkit-font-smoothing:antialiased;
+      padding-bottom:calc(var(--nav-h) + env(safe-area-inset-bottom));
+      transition:background .25s ease, color .25s ease;
+    }
+
+    /* ---------- top chrome ---------- */
+    .topbar{
+      background:linear-gradient(160deg,var(--chrome-2),var(--chrome));
+      color:var(--chrome-text); box-shadow:var(--shadow); position:sticky; top:0; z-index:20;
+      padding-top:env(safe-area-inset-top);
+    }
+    .topbar-inner{max-width:560px; margin:0 auto; padding:14px 16px; display:flex; align-items:center; gap:15px;}
+    .brand-mark{flex:0 0 auto; width:76px; height:76px; border-radius:20px; overflow:hidden;
+      background:#fff; display:flex; align-items:center; justify-content:center;
+      box-shadow:0 10px 26px rgba(0,0,0,.38), 0 3px 6px rgba(0,0,0,.28);}
+    .brand-mark img{width:100%; height:100%; object-fit:contain; display:block;}
+    .hero-lockup{display:block; width:100%; max-width:none; height:auto; margin:0 auto;
+      filter:drop-shadow(0 6px 14px rgba(20,30,50,.16));}
+    .back-btn{flex:0 0 auto;}
+    .brand-text{min-width:0;}
+    .brand-text h1{font-size:19px; line-height:1.2; margin:0; font-weight:800; letter-spacing:-.02em;
+      color:var(--chrome-text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+      text-shadow:0 2px 6px rgba(0,0,0,.45);}
+    .brand-text p{margin:2px 0 0; font-size:13px; color:var(--chrome-sub);}
+    .top-actions{margin-left:auto; display:flex; gap:8px;}
+    .icon-btn{width:40px; height:40px; border-radius:12px; border:1px solid rgba(255,255,255,.16);
+      background:rgba(255,255,255,.08); color:var(--chrome-text); font-size:19px; cursor:pointer;
+      display:flex; align-items:center; justify-content:center; padding:0; transition:background .15s ease;}
+    .icon-btn:hover{background:rgba(255,255,255,.18);}
+
+    .wrap{max-width:560px; margin:0 auto; padding:16px 16px 28px;}
+
+    /* ---------- surfaces ---------- */
+    .card{
+      background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
+      padding:20px; margin-top:16px; box-shadow:var(--shadow);
+    }
+    .card:first-child{margin-top:0;}
+
+    /* ---------- buttons ---------- */
+    .btn{
+      display:block; width:100%; min-height:56px; padding:16px 18px; font-size:18px; font-weight:700;
+      border:none; border-radius:14px; cursor:pointer;
+      background:linear-gradient(180deg, color-mix(in srgb, var(--accent) 88%, #fff) 0%, var(--accent) 55%, var(--accent-2) 100%);
+      color:var(--accent-ink); text-align:center; margin-bottom:12px;
+      text-shadow:0 1px 2px rgba(0,0,0,.28);
+      box-shadow:0 10px 22px -6px color-mix(in srgb, var(--accent) 55%, transparent),
+                 0 3px 8px rgba(16,24,40,.16), inset 0 1px 0 rgba(255,255,255,.28);
+      transition:transform .06s ease, filter .15s ease, box-shadow .15s ease;
+    }
+    .btn:last-child{margin-bottom:0;}
+    .btn:hover{filter:brightness(1.06);}
+    .btn:active{transform:translateY(2px); box-shadow:0 3px 8px -2px rgba(16,24,40,.28), inset 0 1px 0 rgba(255,255,255,.2);}
+    .btn.secondary{background:var(--surface); color:var(--accent); border:2px solid var(--accent);
+      text-shadow:none; box-shadow:0 4px 12px -4px rgba(16,24,40,.22), inset 0 1px 0 rgba(255,255,255,.6);}
+    .btn.secondary:hover{background:var(--accent-soft);}
+    .btn.secondary.active{background:var(--accent); color:var(--accent-ink); border-color:var(--accent);}
+    .btn.ghost{background:transparent; color:var(--text-2); font-weight:600; min-height:auto; padding:12px 14px; box-shadow:none; text-shadow:none;}
+    .btn.ghost:hover{color:var(--text);}
+    .btn.danger{background:var(--danger); box-shadow:0 6px 16px rgba(198,40,40,.28);}
+    .btn.google{background:var(--surface); color:var(--text); border:2px solid var(--border); box-shadow:var(--shadow-sm);
+      display:flex; align-items:center; justify-content:center; gap:11px;}
+    .btn.google:hover{background:var(--surface-2);}
+    .btn.google svg{width:22px; height:22px; flex:0 0 auto;}
+
+    /* ---------- forms ---------- */
+    label{display:block; font-size:15px; font-weight:700; margin:16px 0 7px; color:var(--text);}
+    input,select,textarea{
+      width:100%; padding:15px 14px; font-size:17px; border:2px solid var(--border); border-radius:13px;
+      background:var(--surface); color:var(--text); outline:none; font-family:inherit;
+      transition:border-color .15s ease, box-shadow .15s ease;
+    }
+    textarea{resize:vertical; line-height:1.5;}
+    input:focus,select:focus,textarea:focus{border-color:var(--accent); box-shadow:0 0 0 4px var(--accent-soft);}
+    :focus-visible{outline:3px solid var(--accent); outline-offset:2px;}
+
+    /* ---------- text ---------- */
+    .title{font-size:22px; font-weight:800; margin:0 0 5px; letter-spacing:-.024em;
+      text-shadow:0 1px 0 rgba(255,255,255,.6), 0 2px 5px rgba(16,24,40,.10);}
+    html[data-mode="dark"] .title{text-shadow:0 1px 2px rgba(0,0,0,.55);}
+    .subtitle{font-size:16px; color:var(--text-2); margin:0 0 4px; line-height:1.45;}
+    .hint{font-size:14px; color:var(--text-2); margin-top:6px; line-height:1.45;}
+    .msg{padding:14px 16px; border-radius:13px; font-size:15px; line-height:1.45; margin-top:16px; display:none; box-shadow:var(--shadow-sm);}
+    .msg.error{background:color-mix(in srgb, var(--danger) 10%, var(--surface)); color:var(--danger); border:1px solid color-mix(in srgb, var(--danger) 32%, var(--surface)); display:block;}
+    .msg.success{background:color-mix(in srgb, var(--ok) 10%, var(--surface)); color:var(--ok); border:1px solid color-mix(in srgb, var(--ok) 32%, var(--surface)); display:block;}
+    .hidden{display:none;} .spin{opacity:.55; pointer-events:none;}
+    .pill{display:inline-block; font-size:13px; font-weight:700; color:var(--accent); background:var(--accent-soft);
+      border:1px solid color-mix(in srgb, var(--accent) 26%, var(--surface)); border-radius:999px; padding:5px 13px; margin-bottom:10px;}
+    .pill.warn{color:var(--warn); background:color-mix(in srgb, var(--warn) 12%, var(--surface)); border-color:color-mix(in srgb, var(--warn) 30%, var(--surface));}
+
+    /* ---------- home hero ---------- */
+    .hero{
+      background:linear-gradient(165deg,#ffffff,#eef3fa); color:var(--text);
+      border:1px solid var(--border); border-radius:var(--radius); padding:14px 12px 16px;
+      box-shadow:var(--shadow-lg); text-align:center; margin-bottom:4px;
+    }
+    html[data-mode="dark"] .hero{ background:linear-gradient(165deg,#f4f7fc,#e6edf7); color:#141a23; border-color:#c9d5e6; }
+    
+    .hero h2{margin:6px 0 0; font-size:17px; font-weight:800; letter-spacing:-.02em; color:#1b2740;}
+    .hero p{margin:5px 0 0; font-size:14px; color:#5a6575; line-height:1.45;}
+
+    /* ---------- detail rows ---------- */
+    .detail{border:1px solid var(--border); border-radius:14px; overflow:hidden; margin-top:10px; background:var(--surface-2);}
+    .detail .row{display:flex; justify-content:space-between; gap:12px; padding:14px 15px; font-size:16px; border-bottom:1px solid var(--border);}
+    .detail .row:last-child{border-bottom:none;}
+    .detail .row span{color:var(--text-2);}
+    .detail .row b{text-align:right;}
+
+    /* ---------- home status tiles ---------- */
+    .barhead{display:flex; justify-content:space-between; align-items:center; gap:10px;}
+    .collapse-toggle{background:none; border:none; padding:0; margin:0; font:inherit; color:var(--text);
+      font-size:17px; font-weight:800; letter-spacing:-.015em; cursor:pointer; display:flex; align-items:center; gap:9px;}
+    .collapse-toggle .chev{font-size:15px; color:var(--text-2); transition:transform .3s ease; display:inline-block;}
+    .card.collapsed .collapse-toggle .chev{transform:rotate(-90deg);}
+    .collapsible{max-height:1600px; overflow:hidden; transition:max-height .35s ease;}
+    .card.collapsed .collapsible{max-height:0;}
+    .refresh{width:auto; min-height:auto; margin:0; padding:9px 13px; font-size:14px; font-weight:700; box-shadow:none;}
+    .hs-tiles{display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin:6px 0 2px;}
+    .hs-tile{border-radius:13px; padding:11px 8px; color:#fff; text-align:center; overflow:hidden;
+      box-shadow:0 6px 14px -4px rgba(16,24,40,.30), inset 0 1px 0 rgba(255,255,255,.18);}
+    .hs-tile b{display:block; font-size:25px; font-weight:800; line-height:1; letter-spacing:-.03em; text-shadow:0 2px 5px rgba(0,0,0,.35);}
+    .hs-tile span{display:block; margin-top:5px; font-size:11.5px; font-weight:700; line-height:1.2; text-shadow:0 1px 2px rgba(0,0,0,.28);}
+    .hs-tile.total{background:linear-gradient(145deg,#3f4d61,#28323f);}
+    .hs-tile.ok{background:linear-gradient(145deg,var(--ok-2),var(--ok));}
+    .hs-tile.out{background:linear-gradient(145deg,var(--accent),var(--accent-2));}
+    .hs-tile.over{background:linear-gradient(145deg,var(--danger-2),var(--danger));}
+    .hs-cong{margin-top:14px; border-top:1px solid var(--border); padding-top:12px;}
+    .hs-crow{margin-bottom:11px;} .hs-crow:last-child{margin-bottom:0;}
+    .hs-crow-top{display:flex; justify-content:space-between; align-items:baseline; gap:10px; margin-bottom:7px;}
+    .hs-crow-top .cn{font-weight:700; font-size:14.5px;}
+    .hs-crow-top b{font-weight:800; font-size:13.5px; color:var(--text-2);}
+    .hs-seg{display:flex; height:11px; border-radius:999px; overflow:hidden; background:var(--surface-3); box-shadow:inset 0 1px 3px rgba(0,0,0,.18);}
+    .hs-seg i{display:block; height:100%;}
+    .updated{font-size:12px; color:var(--text-2); text-align:center; margin-top:12px;}
+
+    /* ---------- list rows ---------- */
+    .crow{border:1px solid var(--border); border-radius:14px; padding:15px; margin-bottom:12px; background:var(--surface); box-shadow:var(--shadow-sm);}
+    .crow .top{display:flex; justify-content:space-between; align-items:center; gap:10px;}
+    .crow .cn{font-weight:800; font-size:17px;}
+    .crow .cg{font-size:14px; color:var(--text-2);}
+    .crow .meta{margin-top:10px; font-size:15px;}
+    .crow .meta div{display:flex; justify-content:space-between; gap:12px; padding:3px 0;}
+    .crow .meta span{color:var(--text-2);}
+    .cart-btn small{display:block; font-weight:600; font-size:14px; color:var(--text-2); margin-top:3px;}
+    .tag{font-size:12px; font-weight:800; padding:5px 12px; border-radius:999px; white-space:nowrap;}
+    .tag.avail{color:var(--ok); background:color-mix(in srgb, var(--ok) 12%, var(--surface)); border:1px solid color-mix(in srgb, var(--ok) 30%, var(--surface));}
+    .tag.out{color:var(--accent); background:var(--accent-soft); border:1px solid color-mix(in srgb, var(--accent) 26%, var(--surface));}
+    .tag.over{color:var(--danger); background:color-mix(in srgb, var(--danger) 12%, var(--surface)); border:1px solid color-mix(in srgb, var(--danger) 30%, var(--surface));}
+
+    /* ---------- posters ---------- */
+    .pgrid{display:grid; grid-template-columns:1fr 1fr; gap:13px; margin-top:8px;}
+    .pcard{position:relative; border:1px solid var(--border); border-radius:14px; padding:11px; background:var(--surface);
+      cursor:pointer; text-align:center; box-shadow:var(--shadow-sm); transition:transform .08s ease, box-shadow .15s ease;}
+    .pcard:active{transform:scale(.985);}
+    .pcard.out{opacity:.6;} .pcard-off{opacity:.5; cursor:not-allowed;}
+    .pimg{width:100%; aspect-ratio:3/4; border-radius:10px; overflow:hidden; background:var(--surface-3);
+      display:flex; align-items:center; justify-content:center; margin-bottom:9px;}
+    .pimg img{width:100%; height:100%; object-fit:cover;}
+    .pph{font-size:15px; color:var(--text-2); padding:8px; text-align:center;}
+    .ptitle{font-size:19px; font-weight:700; line-height:1.25;}
+    .pmeta{font-size:16px; color:var(--text-2); margin-top:3px;}
+    .plang{font-size:14px; font-weight:600; color:var(--accent); margin-top:2px;}
+    .pbadge{position:absolute; top:7px; left:7px; background:var(--accent); color:#fff; font-size:12px; font-weight:700;
+      padding:3px 9px; border-radius:999px; box-shadow:var(--shadow-sm);}
+    .pbadge.blue{background:#334155;} .pbadge.over{background:var(--danger);} .pbadge.gray{background:var(--text-2);}
+    .pnone{display:flex; align-items:center; justify-content:center; min-height:150px;}
+    .pnone-inner{color:var(--text-2); font-size:17px; display:flex; flex-direction:column; gap:4px; align-items:center;}
+    .reminder{background:color-mix(in srgb, var(--warn) 12%, var(--surface)); border:1px solid color-mix(in srgb, var(--warn) 30%, var(--surface));
+      color:var(--warn); border-radius:13px; padding:13px 15px; font-size:15px; margin-top:12px;}
+    .psection-head{font-size:15px; font-weight:800; letter-spacing:.06em; text-shadow:0 1px 2px rgba(16,24,40,.10); text-transform:uppercase; color:var(--accent);
+      margin:22px 0 10px; padding-top:16px; border-top:2px solid var(--border); padding-bottom:7px;
+      border-bottom:2px solid var(--accent-soft);}
+    .psection-head.first{margin-top:4px; padding-top:0; border-top:none;}
+
+    /* ---------- guide + faq ---------- */
+    .guide-intro{background:var(--accent-soft); border:1px solid color-mix(in srgb, var(--accent) 22%, var(--surface));
+      border-radius:14px; padding:15px 16px; line-height:1.5; margin:8px 0 18px;}
+    .guide-step{display:flex; gap:13px; margin-bottom:15px; align-items:flex-start;}
+    .guide-num{flex:0 0 auto; width:34px; height:34px; border-radius:50%; background:var(--accent); color:#fff;
+      font-weight:800; display:flex; align-items:center; justify-content:center; font-size:17px; box-shadow:var(--shadow-accent);}
+    .guide-step .gs-text{padding-top:5px; line-height:1.5;}
+    .faq{border:1px solid var(--border); border-radius:14px; margin-bottom:10px; background:var(--surface); box-shadow:var(--shadow-sm); overflow:hidden;}
+    .faq summary{cursor:pointer; padding:15px 16px; font-weight:700; font-size:17px; list-style:none;
+      display:flex; justify-content:space-between; align-items:center; gap:12px;}
+    .faq summary::-webkit-details-marker{display:none;}
+    .faq summary::after{content:'+'; color:var(--accent); font-size:24px; font-weight:800; line-height:1;}
+    .faq[open] summary::after{content:'3';}
+    .faq .faq-a{padding:0 16px 15px; line-height:1.55; color:var(--text-2);}
+
+    /* ---------- schedule ---------- */
+    .sched-title-main{text-align:center; font-size:22px; font-weight:800; margin:8px 0 14px;
+      border-bottom:3px solid var(--accent); padding-bottom:10px; letter-spacing:-.02em;}
+    /* equal-height rows keep the six cells symmetrical */
+    .sched-grid{display:grid; grid-template-columns:1fr 1fr; gap:14px; grid-auto-rows:1fr;}
+    .sched-cell{border:1px solid var(--border); border-radius:12px; overflow:hidden; background:var(--surface);
+      display:flex; flex-direction:column; box-shadow:var(--shadow-sm);}
+    .sched-period{background:var(--surface-3); font-weight:800; text-align:center; padding:9px 6px; font-size:15px;
+      white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+    .sched-img{flex:1; display:flex; align-items:center; justify-content:center; padding:10px; min-height:190px;}
+    .sched-img img{max-width:100%; max-height:250px; object-fit:contain;}
+    .yearnav{display:flex; align-items:center; gap:10px; margin:12px 0 6px;}
+    .yearnav .ynav{width:56px; min-height:52px; margin:0; flex:0 0 auto; font-size:20px; padding:0;}
+    .yearlabel{flex:1; text-align:center; line-height:1.25;}
+    .yearlabel b{display:block; font-size:19px; font-weight:800;}
+    .yearlabel span{display:block; font-size:14px; color:var(--text-2);}
+    .sched-ph{color:var(--text-2); font-size:14px; text-align:center;}
+    .sched-cap{padding:10px 12px 14px; text-align:center; font-weight:700; font-size:14px; line-height:1.4;}
+    .sched-empty{color:var(--text-2); font-weight:600;}
+
+    /* ---------- theme picker ---------- */
+    .swatches{display:flex; gap:12px; flex-wrap:wrap; margin-top:10px;}
+    .swatch{width:52px; height:52px; border-radius:14px; border:3px solid transparent; cursor:pointer;
+      box-shadow:var(--shadow); position:relative;}
+    .swatch.on{border-color:var(--text);}
+    .swatch.on::after{content:'¹3'; position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+      color:#fff; font-size:22px; font-weight:800; text-shadow:0 1px 3px rgba(0,0,0,.5);}
+
+    /* ---------- bottom navigation ---------- */
+    .bottomnav{
+      position:fixed; left:0; right:0; bottom:0; z-index:30;
+      background:color-mix(in srgb, var(--surface) 92%, transparent);
+      backdrop-filter:saturate(180%) blur(14px); -webkit-backdrop-filter:saturate(180%) blur(14px);
+      border-top:1px solid var(--border); box-shadow:0 -6px 20px rgba(16,24,40,.10);
+      padding-bottom:env(safe-area-inset-bottom);
+    }
+    .bottomnav-inner{max-width:560px; margin:0 auto; display:grid; grid-template-columns:repeat(5,1fr);}
+    .navbtn{
+      background:none; border:none; cursor:pointer; padding:9px 4px 10px; font:inherit;
+      display:flex; flex-direction:column; align-items:center; gap:4px;
+      color:var(--text-2); font-size:11.5px; font-weight:700; transition:color .15s ease;
+    }
+    .navbtn svg{width:25px; height:25px; stroke:currentColor; fill:none; stroke-width:1.9; stroke-linecap:round; stroke-linejoin:round;}
+    .navbtn.on{color:var(--accent);}
+    .navbtn:active{transform:translateY(1px);}
+
+    /* narrow phones: keep the bigger logo without crowding the title */
+    @media (max-width:380px){
+      .brand-mark{width:62px; height:62px; border-radius:17px;}
+      .brand-text h1{font-size:17px;}
+      .brand-text p{font-size:12px;}
+      .topbar-inner{gap:11px; padding:12px 13px;}
+    }
+    @media (prefers-reduced-motion: reduce){ *{transition:none !important;} }
+
+    /* ---------- approval alerts ---------- */
+    .navbtn{position:relative;}
+    .navbadge{position:absolute; top:4px; left:calc(50% + 6px); min-width:19px; height:19px; padding:0 5px;
+      border-radius:999px; background:var(--danger); color:#fff; font-size:11px; font-weight:800;
+      display:flex; align-items:center; justify-content:center; box-shadow:0 2px 6px rgba(198,40,40,.5);}
+    .approve-banner{display:flex; align-items:center; gap:12px; background:color-mix(in srgb, var(--warn) 14%, var(--surface));
+      border:1px solid color-mix(in srgb, var(--warn) 36%, var(--surface)); border-radius:var(--radius);
+      padding:15px 16px; margin-bottom:16px; box-shadow:var(--shadow); cursor:pointer;}
+    .approve-banner .ab-count{flex:0 0 auto; width:42px; height:42px; border-radius:50%; background:var(--danger);
+      color:#fff; font-weight:800; font-size:18px; display:flex; align-items:center; justify-content:center;
+      box-shadow:0 4px 10px rgba(198,40,40,.4);}
+    .approve-banner .ab-text{line-height:1.35;}
+    .approve-banner b{display:block; font-size:16px;}
+    .approve-banner span{font-size:14px; color:var(--text-2);}
+
+    /* ---------- print ---------- */
+    .print-sheet{ display:none; }
+    @media print{
+      @page{ size:letter portrait; margin:0.3in; }
+      html,body{ background:#fff !important; color:#000 !important; margin:0 !important; padding:0 !important; }
+      .topbar, .bottomnav, .wrap { display:none !important; }
+      .print-sheet{ display:block !important; }
+
+      /* Fixed geometry: header, title and footer take a known amount and the grid
+         gets exactly what is left, so all six cells always fit on one page. */
+      .ps-sheet{ height:10.4in; display:flex; flex-direction:column; }
+      .ps-hdr{ flex:0 0 auto; text-align:center; font-weight:800; font-size:10.5px;
+        letter-spacing:.02em; padding-bottom:3px; border-bottom:1px solid #999; }
+      .ps-ttl{ flex:0 0 auto; text-align:center; font-size:15px; font-weight:800;
+        margin:6px 0; padding-bottom:4px; border-bottom:2.5px solid #3a67ac; }
+      .ps-grid{ flex:1 1 auto; min-height:0; display:grid; grid-template-columns:1fr 1fr;
+        grid-template-rows:repeat(3,1fr); gap:7px; }
+      .ps-cell{ border:1px solid #999; border-radius:5px; overflow:hidden;
+        page-break-inside:avoid; break-inside:avoid; display:flex; flex-direction:column; min-height:0; }
+      .ps-per{ flex:0 0 auto; background:#ddd !important; -webkit-print-color-adjust:exact;
+        print-color-adjust:exact; font-weight:800; text-align:center; padding:3px 4px;
+        font-size:11px; line-height:1.2; }
+      /* the cover fills whatever height is left in the cell */
+      .ps-img{ flex:1 1 auto; min-height:0; display:flex; align-items:center; justify-content:center; padding:4px; }
+      .ps-img img{ max-width:100%; max-height:100%; width:auto; height:100%; object-fit:contain; }
+      .ps-ph{ color:#666; font-size:10px; }
+      .ps-cap{ flex:0 0 auto; text-align:center; font-weight:700; font-size:9.5px;
+        line-height:1.25; padding:3px 5px 5px; }
+      .ps-ftr{ flex:0 0 auto; text-align:center; font-size:9.5px; color:#333;
+        padding-top:4px; border-top:1px solid #999; margin-top:6px; }
+    }
+
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <button class="icon-btn back-btn" id="backBtn" onclick="goBack()" title="Back" style="display:none;">&#8592;</button>
+      <span class="brand-mark"><img alt="" src="data:image/png;base64,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"></span>
+      <div class="brand-text">
+        <h1 id="appName">Congregation Cart Program</h1>
+        <p>Public witnessing cart check-in / check-out</p>
+      </div>
+      <div class="top-actions">
+        <button class="icon-btn" id="modeBtn" title="Light or dark" onclick="toggleMode()">&#9789;</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="wrap">
+
+    <!-- HOME -->
+    <div id="view-home">
+      <div id="approveBanner"></div>
+      <div class="hero">
+        <img class="hero-lockup" src="/logo-lockup.png" alt="Congregation Cart Program" onerror="this.style.display='none'">
+        <h2 id="heroName" class="hidden">Congregation Cart Program</h2>
+        <p>Share the public witnessing cart in a few taps.</p>
+      </div>
+      <div class="card" id="homeStatusCard">
+        <div class="barhead">
+          <button class="collapse-toggle" id="homeToggle" aria-expanded="true" onclick="toggleHomeStatus()"><span class="chev">&#9662;</span>Cart availability</button>
+          <button class="btn ghost refresh" onclick="loadHomeStatus()">&#8635;</button>
+        </div>
+        <div class="collapsible" id="homeCollapse">
+          <div id="homeStatusBody"><p class="subtitle">Loading&hellip;</p></div>
+        </div>
+      </div>
+      <div class="card">
+        <button class="btn" onclick="requireLogin('checkout')">Check Out a Cart</button>
+        <button class="btn secondary" onclick="requireLogin('return')">Return My Cart</button>
+        <button class="btn secondary" onclick="requireLogin('posterco')">Check Out a Poster</button>
+        <p class="hint" style="text-align:center; margin-top:14px;">Posters, the schedule and help are along the bottom.</p>
+      </div>
+    </div>
+
+    <!-- SIGN IN -->
+    <div id="view-login" class="card hidden">
+      <button class="btn ghost" style="margin:0 0 4px; padding-left:0;" onclick="goBack()">&larr; Back</button>
+      <p class="title">Sign in</p>
+      <p class="subtitle">Use your Google account &mdash; it is the quickest, and your name fills in automatically.</p>
+      <div id="loginMsg" class="msg"></div>
+      <button class="btn google" id="googleBtn" onclick="signInGoogle()">
+        <svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.6l6.7-6.7C35.6 2.6 30.2 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.8 6.1C12.3 13.2 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.6 3-2.3 5.5-4.8 7.2l7.5 5.8c4.4-4.1 7.1-10.1 7.1-17.5z"/><path fill="#FBBC05" d="M10.4 28.7c-.5-1.4-.8-2.9-.8-4.7s.3-3.3.8-4.7l-7.8-6.1C1 16.3 0 20 0 24s1 7.7 2.6 10.8l7.8-6.1z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.5-5.8c-2.1 1.4-4.8 2.3-8.4 2.3-6.3 0-11.7-3.7-13.6-9.0l-7.8 6.1C6.5 42.6 14.6 48 24 48z"/></svg>
+        Continue with Google
+      </button>
+      <div style="text-align:center; color:var(--text-2); font-size:14px; margin:14px 0 4px;">or use an email address</div>
+      <label for="emailIn">Email</label>
+      <input id="emailIn" type="email" autocomplete="email" maxlength="120" placeholder="you@example.com">
+      <label for="passIn">Password</label>
+      <input id="passIn" type="password" autocomplete="current-password" maxlength="60" placeholder="At least 6 characters">
+      <button class="btn" id="emailBtn" style="margin-top:14px;" onclick="signInEmail()">Sign in with email</button>
+      <button class="btn secondary" onclick="signUpEmail()">Create an email account</button>
+      <button class="btn ghost" onclick="resetPassword()">Forgot my password</button>
+    </div>
+
+    <!-- COMPLETE PROFILE (first sign-in) -->
+    <div id="view-profile" class="card hidden">
+      <p class="title">Almost done</p>
+      <p class="subtitle">Just confirm your name and congregation.</p>
+      <div id="profMsg" class="msg"></div>
+      <label for="profName">Your name</label>
+      <input id="profName" type="text" autocomplete="name" maxlength="60">
+      <p class="hint" id="profEmail"></p>
+      <label for="profCong">Congregation</label>
+      <select id="profCong"></select>
+      <label for="profPhone">Phone number <span class="hint" style="display:inline">(optional)</span></label>
+      <input id="profPhone" type="tel" inputmode="numeric" autocomplete="tel" maxlength="20" placeholder="713-555-1234">
+      <button class="btn" id="profBtn" style="margin-top:16px;" onclick="saveProfile()">Finish</button>
+      <button class="btn ghost" onclick="doLogout()">Cancel</button>
+    </div>
+
+    <!-- ACCOUNT -->
+    <div id="view-account" class="card hidden">
+      <button class="btn ghost" style="margin:0 0 4px; padding-left:0;" onclick="show('home')">&larr; Home</button>
+      <span class="pill">Logged in</span>
+      <p class="title">Welcome, <span id="acctName"></span></p>
+      <p class="subtitle" id="acctCong"></p>
+      <div id="acctAlerts"></div>
+      <div style="margin-top:12px;">
+        <button class="btn secondary" onclick="openDashboard()">Cart Status</button>
+        <button class="btn secondary" onclick="show('instructions')">How it works</button>
+        <button class="btn secondary" onclick="openIssues()">Report an Issue</button>
+        <button class="btn secondary" onclick="openSettings()">Appearance</button>
+        <button class="btn secondary" id="adminBtn" style="display:none;" onclick="openAdmin()">Admin</button>
+        <button class="btn ghost" onclick="doLogout()">Sign out</button>
+      </div>
+    </div>
+
+    <!-- CHECKOUT -->
+    <div id="view-checkout" class="card hidden">
+      <button class="btn ghost" style="margin:0 0 4px; padding-left:0;" onclick="goBack()">&larr; Back</button>
+      <p class="title">Check out a cart</p>
+      <div id="coMsg" class="msg"></div>
+      <div id="coBody"></div>
+    </div>
+
+    <!-- RETURN -->
+    <div id="view-return" class="card hidden">
+      <button class="btn ghost" style="margin:0 0 4px; padding-left:0;" onclick="goBack()">&larr; Back</button>
+      <p class="title">Return your cart</p>
+      <div id="rtMsg" class="msg"></div>
+      <div id="rtBody"></div>
+    </div>
+
+    <!-- DASHBOARD -->
+    <div id="view-dashboard" class="card hidden">
+      <button class="btn ghost" style="margin:0 0 4px; padding-left:0;" onclick="goBack()">&larr; Back</button>
+      <div class="barhead">
+        <p class="title" style="margin:0;">Cart status</p>
+        <button class="btn ghost refresh" onclick="loadDashboard()">&#8635; Refresh</button>
+      </div>
+      <div id="dashMsg" class="msg"></div>
+      <div id="dashBody"></div>
+    </div>
+
+    <!-- POSTER-ONLY CHECKOUT -->
+    <div id="view-posterco" class="card hidden">
+      <button class="btn ghost" style="margin:0 0 4px; padding-left:0;" onclick="goBack()">&larr; Back</button>
+      <p class="title">Check out a poster</p>
+      <p class="subtitle">Take a poster on its own &mdash; separate from a cart. One at a time.</p>
+      <div id="pcMsg" class="msg"></div>
+      <div id="pcBody"></div>
+    </div>
+
+    <!-- POSTER DISPLAY -->
+    <div id="view-posters" class="card hidden">
+      <button class="btn ghost" style="margin:0 0 4px; padding-left:0;" onclick="goBack()">&larr; Back</button>
+      <p class="title">Posters</p>
+      <p class="subtitle" id="pvSub"></p>
+      <div id="pvMsg" class="msg"></div>
+      <div id="pvBody"></div>
+      <button class="btn ghost" style="margin-top:8px;" onclick="goBack()">&larr; Back</button>
+    </div>
+
+    <!-- FEATURED SCHEDULE -->
+    <div id="view-schedule" class="card hidden">
+      <button class="btn ghost" style="margin:0 0 4px; padding-left:0;" onclick="goBack()">&larr; Back</button>
+      <p class="title">Featured Publications schedule</p>
+      <p class="subtitle" id="schSub"></p>
+      <div id="schMsg" class="msg"></div>
+      <div class="yearnav">
+        <button class="btn secondary ynav" onclick="stepSchedule(-1)" title="Previous service year">&larr;</button>
+        <div class="yearlabel"><b id="schYear">&nbsp;</b><span id="schRange">&nbsp;</span></div>
+        <button class="btn secondary ynav" onclick="stepSchedule(1)" title="Next service year">&rarr;</button>
+      </div>
+      <button class="btn ghost" id="schThisBtn" style="margin-bottom:8px;" onclick="loadSchedule(0)">Jump to current service year</button>
+      <button class="btn" onclick="printSchedule()">Print schedule</button>
+      <p class="hint">Prints the whole service year on one page. In the print dialog choose <b>Paper: Letter</b> and turn <b>Headers and footers: Off</b>. To keep a copy, choose <b>Save as PDF</b> (on iPhone, use <b>Share &rsaquo; Print</b>, then pinch out on the preview).</p>
+      <div id="schBody"></div>
+    </div>
+
+    <!-- ISSUES -->
+    <div id="view-issues" class="card hidden">
+      <button class="btn ghost" style="margin:0 0 4px; padding-left:0;" onclick="goBack()">&larr; Back</button>
+      <p class="title">Report an issue</p>
+      <p class="subtitle">Tell the administrators what went wrong.</p>
+      <div id="isMsg" class="msg"></div>
+      <label for="isText">What happened?</label>
+      <textarea id="isText" rows="5" placeholder="Describe the problem&hellip;"></textarea>
+      <button class="btn" id="isBtn" style="margin-top:14px;" onclick="submitIssue()">Send report</button>
+    </div>
+
+    <!-- POSTER EDITOR (admin) -->
+    <div id="view-posteredit" class="card hidden">
+      <button class="btn ghost" style="margin:0 0 4px; padding-left:0;" onclick="goBack()">&larr; Back</button>
+      <p class="title" id="peTitle">Poster</p>
+      <div id="peMsg" class="msg"></div>
+      <div id="peBody"></div>
+    </div>
+
+    <!-- IMPORT POSTERS (admin) -->
+    <div id="view-import" class="card hidden">
+      <button class="btn ghost" style="margin:0 0 4px; padding-left:0;" onclick="goBack()">&larr; Back</button>
+      <p class="title">Import posters</p>
+      <p class="subtitle">Copy the rows straight out of your Feature Poster Index spreadsheet and paste them here.</p>
+      <div id="impMsg" class="msg"></div>
+
+      <div class="guide-intro">
+        <b>How to copy from Google Sheets</b><br>
+        1. Open your Feature Poster Index.<br>
+        2. Select the rows you want (including the header row).<br>
+        3. Copy, then paste into the box below.
+      </div>
+
+      <label for="impText">Paste your rows here</label>
+      <textarea id="impText" rows="8" placeholder="Series&#9;Edition&#9;Title&#9;id&#9;Publication id&#9;image link&#9;Featured Months&#9;Total Inventory"></textarea>
+      <p class="hint">Your columns are matched by their header names, so the order does not matter. Anything it cannot match is simply left blank.</p>
+      <button class="btn" style="margin-top:12px;" onclick="previewImport()">Preview</button>
+      <div id="impPreview"></div>
+    </div>
+
+    <!-- WAITING FOR APPROVAL -->
+    <div id="view-pending" class="card hidden">
+      <span class="pill warn">Awaiting approval</span>
+      <p class="title">Thanks, <span id="pendName"></span>!</p>
+      <p class="subtitle">Your details have been sent to the cart coordinators. As soon as one of them approves you, you will be able to check out a cart or a poster.</p>
+      <div class="guide-intro" style="margin-top:14px;">You can leave this screen open &mdash; it updates by itself the moment you are approved. There is nothing else you need to do.</div>
+      <button class="btn" style="margin-top:14px;" onclick="recheckApproval()">Check again</button>
+      <button class="btn ghost" onclick="doLogout()">Sign out</button>
+    </div>
+
+    <!-- SETTINGS -->
+    <div id="view-settings" class="card hidden">
+      <button class="btn ghost" style="margin:0 0 4px; padding-left:0;" onclick="goBack()">&larr; Back</button>
+      <p class="title">Appearance</p>
+      <p class="subtitle">Choose a colour and switch between light and night mode. Your choice is remembered on this device.</p>
+      <label>Colour theme</label>
+      <div class="swatches" id="swatches"></div>
+      <label style="margin-top:20px;">Display mode</label>
+      <button class="btn secondary" id="modeToggleBtn" onclick="toggleMode()">Switch to night mode</button>
+      <p class="hint">Tip: on your phone you can add this app to your Home Screen from the browser menu &mdash; it then opens like a normal app.</p>
+    </div>
+
+    <!-- ADMIN -->
+    <div id="view-admin" class="card hidden">
+      <button class="btn ghost" style="margin:0 0 4px; padding-left:0;" onclick="goBack()">&larr; Back</button>
+      <p class="title">Admin</p>
+      <p class="subtitle">Set up the fleet and app settings. Posters, service year and languages arrive in the next phase.</p>
+      <div id="admMsg" class="msg"></div>
+      <div id="admBody"></div>
+    </div>
+
+    <!-- INSTRUCTIONS -->
+    <div id="view-instructions" class="card hidden">
+      <button class="btn ghost" style="margin:0 0 4px; padding-left:0;" onclick="goBack()">&larr; Back</button>
+      <p class="title">How it works</p>
+      <div class="guide-intro">Welcome! This is our simple way to share the public witnessing cart. Everything is a tap or two, it only takes a moment, and there is nothing here you can break.</div>
+
+      <div class="guide-step"><div class="guide-num">1</div><div class="gs-text"><b>Sign in once.</b> Tap <b>Sign in</b> and choose <b>Continue with Google</b>. Your name fills in automatically &mdash; you just add your phone number and congregation the first time.</div></div>
+      <div class="guide-step"><div class="guide-num">2</div><div class="gs-text"><b>Take a cart.</b> Tap <b>Check Out Cart</b> and pick one shown as available in your congregation.</div></div>
+      <div class="guide-step"><div class="guide-num">3</div><div class="gs-text"><b>Answer one question.</b> The main cart displays the <b>Free Bible Course</b> poster. If it is a <b>second cart</b> at the same location, you may choose one additional poster.</div></div>
+      <div class="guide-step"><div class="guide-num">4</div><div class="gs-text"><b>Bring it back.</b> Tap <b>Return Cart</b> and confirm. Any poster that went out with the cart is checked back in at the same time.</div></div>
+      <div class="guide-step"><div class="guide-num">5</div><div class="gs-text"><b>Just need a poster?</b> Tap <b>Check Out a Poster</b> to take one on its own, then return it the same easy way.</div></div>
+
+      <div class="psection-head first">Common questions</div>
+      <details class="faq"><summary>Do I need an account?</summary><div class="faq-a">Only the first time. Signing in with Google is quickest &mdash; there is no password to remember. If you would rather use an email address and password, that works too.</div></details>
+      <details class="faq"><summary>How do I know what is available?</summary><div class="faq-a">The Home screen shows how many carts are free in each congregation, before you even sign in. Every poster shows how many copies are available, and anything fully checked out is clearly marked <b>Unavailable</b>.</div></details>
+      <details class="faq"><summary>What do &ldquo;available copies&rdquo; mean for posters?</summary><div class="faq-a">We own a few physical copies of each poster &mdash; usually four. When someone takes one, the number goes down by one; when it comes back, it goes up again. Everyone shares the same pool.</div></details>
+      <details class="faq"><summary>What do the poster sections mean?</summary><div class="faq-a">Posters are grouped so they are easy to find: this service year&rsquo;s featured posters first, in the order they appear, then Watchtower, Awake, and Special Request &mdash; each listed alphabetically.</div></details>
+      <details class="faq"><summary>Can I see the whole year&rsquo;s schedule?</summary><div class="faq-a">Yes &mdash; tap <b>Featured Schedule</b>. You can view this service year or next, and print it or save it as a PDF.</div></details>
+      <details class="faq"><summary>Can I change how the app looks?</summary><div class="faq-a">Tap <b>More &rsaquo; Appearance</b> to choose a colour and switch night mode on or off. You can also add the app to your phone&rsquo;s Home Screen from the browser menu.</div></details>
+      <details class="faq"><summary>I forgot my password.</summary><div class="faq-a">On the sign-in screen, enter your email and tap <b>Forgot my password</b> &mdash; you will get a link to set a new one. If you use Google, there is nothing to remember.</div></details>
+      <details class="faq"><summary>Something looks wrong. Who do I tell?</summary><div class="faq-a">Tap <b>Report an Issue</b> and describe what happened. It goes straight to the coordinators.</div></details>
+
+      <button class="btn ghost" style="margin-top:10px;" onclick="goBack()">&larr; Back</button>
+    </div>
+
+  </div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js";
+import {
+  getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword,
+  GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult,
+  sendPasswordResetEmail, updateProfile, signOut, onAuthStateChanged
+} from "https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js";
+import {
+  getFirestore, doc, getDoc, setDoc, updateDoc, collection, getDocs,
+  query, where, addDoc, deleteDoc, onSnapshot, serverTimestamp, runTransaction, Timestamp
+} from "https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js";
+import { firebaseConfig } from "./firebase-config.js";
+
+const app  = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db   = getFirestore(app);
+
+/* ---------------- state + helpers ---------------- */
+const state = { user: null, profile: null, pendingAction: null, config: null, view: null };
+const VIEWS = ['home','login','profile','settings','account','checkout','return','dashboard','admin','instructions','posterco','posters','schedule','issues','posteredit','import','pending'];
+
+const $  = (id) => document.getElementById(id);
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const showMsg  = (el, type, text) => { el.className = 'msg ' + type; el.textContent = text; };
+const clearMsg = (el) => { el.className = 'msg'; el.textContent = ''; };
+const digits   = (s) => String(s || '').replace(/\D/g, '');
+
+// Sign-in is handled by Firebase Authentication (Google or email + password),
+// so no password or PIN is ever stored or checked by this app.
+
+const navStack = [];
+function show(v, isBack) {
+  const cur = state.view;
+  // Remember where we came from so Back always returns there.
+  if (!isBack && cur && cur !== v) {
+    if (navStack[navStack.length - 1] !== cur) navStack.push(cur);
+    if (navStack.length > 25) navStack.shift();
+  }
+  state.view = v;
+  VIEWS.forEach(n => { const el = $('view-' + n); if (el) el.classList.toggle('hidden', n !== v); });
+  if (v === 'home') { loadHomeStatus(); refreshPendingBadge(); }
+  markNav(v);
+  const bb = $('backBtn');
+  if (bb) bb.style.display = (v === 'home' || !navStack.length) ? 'none' : '';
+  window.scrollTo(0, 0);
+}
+function goBack() {
+  // Never strand someone on a screen they cannot use.
+  let prev = navStack.pop();
+  while (prev && ((prev === 'profile') || (!state.profile && ['account','admin','posteredit','settings'].includes(prev)))) {
+    prev = navStack.pop();
+  }
+  show(prev || 'home', true);
+}
+function toggleHomeStatus() {
+  const card = $('homeStatusCard'); if (!card) return;
+  const collapsed = card.classList.toggle('collapsed');
+  $('homeToggle').setAttribute('aria-expanded', String(!collapsed));
+}
+function requireLogin(action) {
+  if (state.profile) {
+    if (!isApproved(state.profile) || state.profile.active === false) { show('pending'); return; }
+    routeTo(action);
+    return;
+  }
+  state.pendingAction = action; show('login');
+}
+function routeTo(action) {
+  if (action === 'checkout')  return openCheckout();
+  if (action === 'return')    return openReturn();
+  if (action === 'dashboard') return openDashboard();
+  if (action === 'posterco')  return openPosterCheckout();
+  if (action === 'posters')   return openPosterView();
+  if (action === 'schedule')  return openSchedule();
+  if (action === 'issues')    return openIssues();
+  show('account');
+}
+function fmtDate(ts) {
+  if (!ts) return '';
+  const d = ts.toDate ? ts.toDate() : new Date(ts);
+  return d.toLocaleDateString(undefined, { month:'numeric', day:'numeric', year:'numeric' }) + ' ' +
+         d.toLocaleTimeString(undefined, { hour:'numeric', minute:'2-digit' });
+}
+function daysOut(ts) {
+  if (!ts) return 0;
+  const d = ts.toDate ? ts.toDate() : new Date(ts);
+  const a = Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
+  const n = new Date();
+  const b = Date.UTC(n.getFullYear(), n.getMonth(), n.getDate());
+  return Math.max(0, Math.round((b - a) / 86400000));
+}
+const formatPhone = (p) => {
+  const d = digits(p);
+  if (d.length === 10) return d.slice(0,3) + '-' + d.slice(3,6) + '-' + d.slice(6);
+  if (d.length === 11 && d[0] === '1') return d.slice(1,4) + '-' + d.slice(4,7) + '-' + d.slice(7);
+  return p || '';
+};
+const maskPhone = (p) => { const d = digits(p); return d.length >= 4 ? '\u2022\u2022\u2022-\u2022\u2022\u2022-' + d.slice(-4) : ''; };
+
+/* ---------------- settings ---------------- */
+const DEFAULT_CONGREGATIONS = ['Scenic Woods', 'Homestead', 'Hopper'];
+
+async function loadConfig() {
+  try {
+    const snap = await getDoc(doc(db, 'settings', 'config'));
+    state.config = snap.exists() ? snap.data() : {};
+  } catch (e) { state.config = {}; }
+  const cfg = state.config || {};
+  if (cfg.appName) $('appName').textContent = cfg.appName;
+  const congs = (cfg.congregations && cfg.congregations.length) ? cfg.congregations : DEFAULT_CONGREGATIONS;
+  const hero = $('heroName');
+  if (hero && cfg.appName) hero.textContent = cfg.appName;
+  return cfg;
+}
+const overdueDays = () => Number((state.config && state.config.overdueDays) || 7);
+
+/* ---------------- names ---------------- */
+// "mary ANN o'brien-smith" -> "Mary Ann O'Brien-Smith"
+function titleCaseName(s) {
+  return String(s || '').trim().toLowerCase()
+    .replace(/\s+/g, ' ')
+    .replace(/(^|[\s('"\u2018\u201c])([a-z\u00e0-\u00ff])/g, (m, a, b) => a + b.toUpperCase())
+    .replace(/([-\u2019'])([a-z\u00e0-\u00ff])/g, (m, a, b) => a + b.toUpperCase())
+    .replace(/\bMc([a-z\u00e0-\u00ff])/g, (m, a) => 'Mc' + a.toUpperCase())
+    .replace(/\bMac([a-z\u00e0-\u00ff])/g, (m, a) => 'Mac' + a.toUpperCase());
+}
+
+// Capitalise proper names/titles but leave small joining words alone.
+function titleCaseWords(s) {
+  const small = ['a','an','and','the','of','or','to','in','on','for','with','from','at','by'];
+  const words = String(s || '').trim().replace(/\s+/g, ' ').split(' ');
+  return words.map((w, i) => {
+    const lower = w.toLowerCase();
+    if (i > 0 && small.indexOf(lower) > -1) return lower;
+    if (/^[A-Za-z]+\d/.test(w) || (w === w.toUpperCase() && w.length <= 4 && /[A-Z]/.test(w))) return w;
+    return titleCaseName(w);
+  }).join(' ');
+}
+
+/* ---------------- auth (Google + email) ---------------- */
+const googleProvider = new GoogleAuthProvider();
+
+async function signInGoogle() {
+  const msg = $('loginMsg'); clearMsg(msg);
+  try {
+    await signInWithPopup(auth, googleProvider);
+  } catch (e) {
+    // Some mobile browsers block pop-ups — fall back to a full-page redirect.
+    if (e && (e.code === 'auth/popup-blocked' || e.code === 'auth/popup-closed-by-user' ||
+              e.code === 'auth/cancelled-popup-request' || e.code === 'auth/operation-not-supported-in-this-environment')) {
+      try { await signInWithRedirect(auth, googleProvider); return; } catch (e2) {}
+    }
+    showMsg(msg, 'error', 'Could not sign in with Google: ' + (e.message || e));
+  }
+}
+async function signInEmail() {
+  const msg = $('loginMsg'), btn = $('emailBtn');
+  const email = $('emailIn').value.trim(), pass = $('passIn').value;
+  clearMsg(msg);
+  if (!email) return showMsg(msg, 'error', 'Please enter your email address.');
+  if (!pass)  return showMsg(msg, 'error', 'Please enter your password.');
+  btn.classList.add('spin'); btn.textContent = 'Signing in\u2026';
+  try { await signInWithEmailAndPassword(auth, email, pass); $('passIn').value = ''; }
+  catch (e) {
+    showMsg(msg, 'error', (e.code === 'auth/invalid-credential' || e.code === 'auth/wrong-password' ||
+      e.code === 'auth/user-not-found') ? 'That email or password is not correct.'
+      : ('Could not sign in: ' + (e.message || e)));
+  }
+  btn.classList.remove('spin'); btn.textContent = 'Sign in with email';
+}
+async function signUpEmail() {
+  const msg = $('loginMsg');
+  const email = $('emailIn').value.trim(), pass = $('passIn').value;
+  clearMsg(msg);
+  if (!email) return showMsg(msg, 'error', 'Enter the email address you would like to use.');
+  if (pass.length < 6) return showMsg(msg, 'error', 'Choose a password of at least 6 characters.');
+  try { await createUserWithEmailAndPassword(auth, email, pass); $('passIn').value = ''; }
+  catch (e) {
+    showMsg(msg, 'error', e.code === 'auth/email-already-in-use'
+      ? 'That email already has an account — try signing in instead.'
+      : ('Could not create the account: ' + (e.message || e)));
+  }
+}
+async function resetPassword() {
+  const msg = $('loginMsg'); const email = $('emailIn').value.trim();
+  clearMsg(msg);
+  if (!email) return showMsg(msg, 'error', 'Enter your email address first, then tap this again.');
+  try { await sendPasswordResetEmail(auth, email); showMsg(msg, 'success', 'Check your email for a link to set a new password.'); }
+  catch (e) { showMsg(msg, 'error', 'Could not send the reset email: ' + (e.message || e)); }
+}
+async function doLogout() { stopApprovalWatch(); await signOut(auth); show('home'); }
+
+// Finish the profile the first time someone signs in.
+function askProfile(user) {
+  const congs = (state.config && state.config.congregations && state.config.congregations.length)
+    ? state.config.congregations : DEFAULT_CONGREGATIONS;
+  // Google gives us the name directly; otherwise make a sensible guess from the
+  // email address (john.smith@... -> John Smith) which they can correct.
+  let guess = user.displayName || '';
+  if (!guess && user.email) guess = user.email.split('@')[0].replace(/[._-]+/g, ' ');
+  $('profName').value = titleCaseName(guess);
+  const em = $('profEmail');
+  if (em) em.textContent = user.email ? ('Signed in as ' + user.email) : '';
+  const sel = $('profCong');
+  sel.innerHTML = '<option value="">Select\u2026</option>' +
+    congs.map(c => '<option value="' + esc(c) + '">' + esc(c) + '</option>').join('');
+  clearMsg($('profMsg'));
+  show('profile');
+}
+async function saveProfile() {
+  const msg = $('profMsg'), btn = $('profBtn');
+  const name = titleCaseName($('profName').value);
+  const phone = digits($('profPhone').value);   // optional
+  const cong = $('profCong').value;
+  clearMsg(msg);
+  if (name.length < 2) return showMsg(msg, 'error', 'Please enter your name.');
+  if (!cong)           return showMsg(msg, 'error', 'Please choose your congregation.');
+  if (phone && phone.length < 10) return showMsg(msg, 'error', 'That phone number looks too short — leave it blank if you prefer.');
+  btn.classList.add('spin'); btn.textContent = 'Saving\u2026';
+  try {
+    await setDoc(doc(db, 'users', state.user.uid), {
+      name, phone, congregation: cong, active: true, admin: false,
+      approved: false, email: state.user.email || '', createdAt: serverTimestamp()
+    }, { merge: true });
+    try { await updateProfile(state.user, { displayName: name }); } catch (e) {}
+    state.profile = { name, phone, congregation: cong, active: true, admin: false, approved: false };
+    afterProfileReady();
+  } catch (e) {
+    showMsg(msg, 'error', 'Could not save: ' + (e.message || e));
+  }
+  btn.classList.remove('spin'); btn.textContent = 'Finish';
+}
+
+// Profiles made before approval existed have no 'approved' field; treat them as approved.
+function isApproved(p) { return !p || !('approved' in p) ? true : p.approved === true; }
+
+function afterProfileReady() {
+  $('acctName').textContent = state.profile.name || '';
+  $('acctCong').textContent = state.profile.congregation || '';
+  $('adminBtn').style.display = state.profile.admin ? '' : 'none';
+
+  if (!isApproved(state.profile) || state.profile.active === false) {
+    $('pendName').textContent = (state.profile.name || '').split(' ')[0];
+    state.pendingAction = null;
+    show('pending');
+    watchApproval();
+    return;
+  }
+  stopApprovalWatch();
+  renderAccountAlerts();
+  refreshPendingBadge();
+  const a = state.pendingAction; state.pendingAction = null;
+  a ? routeTo(a) : show('account');
+}
+
+async function recheckApproval() {
+  try {
+    const snap = await getDoc(doc(db, 'users', state.user.uid));
+    if (snap.exists()) state.profile = snap.data();
+  } catch (e) {}
+  if (isApproved(state.profile) && state.profile.active !== false) afterProfileReady();
+  else alert('Not approved just yet. Please try again a little later.');
+}
+
+// Watch my own profile while I am waiting. As soon as an administrator approves
+// me the screen moves on by itself — no refreshing, no tapping.
+let approvalWatch = null;
+function watchApproval() {
+  if (approvalWatch || !state.user) return;
+  approvalWatch = onSnapshot(doc(db, 'users', state.user.uid), (snap) => {
+    if (!snap.exists()) return;
+    const p = snap.data();
+    state.profile = p;
+    if (isApproved(p) && p.active !== false) {
+      stopApprovalWatch();
+      afterProfileReady();
+    }
+  }, () => {});
+}
+function stopApprovalWatch() {
+  if (approvalWatch) { try { approvalWatch(); } catch (e) {} approvalWatch = null; }
+}
+
+getRedirectResult(auth).catch(() => {});
+
+onAuthStateChanged(auth, async (user) => {
+  if (!user) { state.user = null; state.profile = null; return; }
+  state.user = user;
+  try {
+    const snap = await getDoc(doc(db, 'users', user.uid));
+    state.profile = snap.exists() ? snap.data() : null;
+  } catch (e) { state.profile = null; }
+  if (!state.profile) { askProfile(user); return; }
+  afterProfileReady();
+});
+
+/* ---------------- in-app alerts (replaces email reminders) ---------------- */
+async function renderAccountAlerts() {
+  const box = $('acctAlerts'); box.innerHTML = '';
+  const cart = await myActiveCart();
+  if (!cart) return;
+  const d = daysOut(cart.checkoutAt);
+  const over = d >= overdueDays();
+  box.innerHTML =
+    '<div class="' + (over ? 'reminder' : 'guide-intro') + '" style="margin-top:12px;">' +
+      (over ? '<b>Please return Cart ' + esc(cart.number) + '.</b> ' : '<b>You have Cart ' + esc(cart.number) + '.</b> ') +
+      'Out for ' + d + ' day' + (d === 1 ? '' : 's') + '.' +
+    '</div>';
+}
+
+/* ---------------- carts ---------------- */
+async function allCarts() {
+  const out = [];
+  const snap = await getDocs(collection(db, 'carts'));
+  snap.forEach(d => out.push(Object.assign({ id: d.id }, d.data())));
+  out.sort((a, b) => String(a.congregation).localeCompare(String(b.congregation)) ||
+                     String(a.number).localeCompare(String(b.number), undefined, { numeric: true }));
+  return out;
+}
+async function myActiveCart() {
+  if (!state.user) return null;
+  const snap = await getDocs(query(collection(db, 'carts'), where('currentUserId', '==', state.user.uid)));
+  let found = null;
+  snap.forEach(d => { if (!found) found = Object.assign({ id: d.id }, d.data()); });
+  return found;
+}
+
+/* ---------------- home status (public) ---------------- */
+async function loadHomeStatus() {
+  const body = $('homeStatusBody');
+  try {
+    const carts = await allCarts();
+    const od = overdueDays();
+    let total = 0, avail = 0, out = 0, over = 0;
+    const byCong = {};
+    carts.forEach(c => {
+      total++;
+      const g = byCong[c.congregation] || (byCong[c.congregation] = { total:0, available:0, checkedOut:0, overdue:0 });
+      g.total++;
+      if (c.status === 'Available') { avail++; g.available++; }
+      else if (daysOut(c.checkoutAt) >= od) { over++; g.overdue++; }
+      else { out++; g.checkedOut++; }
+    });
+    let html =
+      '<div class="hs-tiles">' +
+        '<div class="hs-tile total"><b>' + total + '</b><span>Total carts</span></div>' +
+        '<div class="hs-tile ok"><b>' + avail + '</b><span>Available</span></div>' +
+        '<div class="hs-tile out"><b>' + out + '</b><span>Checked out</span></div>' +
+        '<div class="hs-tile over"><b>' + over + '</b><span>Overdue</span></div>' +
+      '</div>';
+    const names = Object.keys(byCong);
+    if (names.length) {
+      html += '<div class="hs-cong">';
+      names.sort().forEach(n => {
+        const g = byCong[n];
+        const seg = (v, col) => v > 0 ? '<i style="width:' + (v / g.total * 100) + '%; background:' + col + '"></i>' : '';
+        html += '<div class="hs-crow">' +
+                  '<div class="hs-crow-top"><span class="cn">' + esc(n) + '</span><b>' + g.available + ' / ' + g.total + ' available</b></div>' +
+                  '<div class="hs-seg">' + seg(g.available, '#1f8a4c') + seg(g.checkedOut, '#3a67ac') + seg(g.overdue, '#c62828') + '</div>' +
+                '</div>';
+      });
+      html += '</div>';
+    }
+    if (!total) html += '<p class="hint">No carts have been added yet. An administrator can add them from the Admin screen.</p>';
+    html += '<div class="updated">Updated ' + new Date().toLocaleTimeString(undefined, { hour:'numeric', minute:'2-digit' }) + '</div>';
+    body.innerHTML = html;
+  } catch (e) {
+    body.innerHTML = '<p class="subtitle">Status unavailable right now. <a href="#" onclick="loadHomeStatus();return false;">Retry</a></p>';
+  }
+}
+
+/* ---------------- checkout ---------------- */
+async function openCheckout() {
+  show('checkout'); clearMsg($('coMsg'));
+  const body = $('coBody'); body.innerHTML = '<p class="subtitle">Loading\u2026</p>';
+  const mine = await myActiveCart();
+  if (mine) {
+    body.innerHTML = '<div class="detail"><div class="row"><span>Your cart</span><b>Cart ' + esc(mine.number) + '</b></div>' +
+      '<div class="row"><span>Checked out</span><b>' + esc(fmtDate(mine.checkoutAt)) + '</b></div></div>' +
+      '<p class="hint">You may hold one cart at a time. Return it before checking out another.</p>';
+    return;
+  }
+  const carts = (await allCarts()).filter(c =>
+    c.status === 'Available' && c.congregation === state.profile.congregation);
+  if (!carts.length) {
+    body.innerHTML = '<p class="subtitle">No carts are available in your congregation right now.</p>';
+    return;
+  }
+  body.innerHTML = '<p class="subtitle">Choose a cart to check out.</p>' +
+    carts.map(c => '<button class="btn secondary cart-btn" data-id="' + esc(c.id) + '">Cart ' + esc(c.number) +
+                   '<small>' + esc(c.congregation) + '</small></button>').join('');
+  body.querySelectorAll('.cart-btn').forEach(b => {
+    b.onclick = () => askSecondCart(b.getAttribute('data-id'), carts.find(c => c.id === b.getAttribute('data-id')));
+  });
+}
+// The cart checkout carries a poster: a main cart displays the Free Bible Course
+// poster; a second cart may take one additional poster from the shared pool.
+let coPick = null;
+
+function askSecondCart(id, cart) {
+  coPick = { cartId: id, cart, second: false, posterKey: '', posterTitle: '' };
+  const body = $('coBody');
+  body.innerHTML =
+    '<div class="detail"><div class="row"><span>Cart</span><b>Cart ' + esc(cart.number) + '</b></div>' +
+    '<div class="row"><span>Congregation</span><b>' + esc(cart.congregation) + '</b></div></div>' +
+    '<p class="subtitle" style="margin-top:16px;">Is this a second cart at the same location?</p>';
+  const no = document.createElement('button');
+  no.className = 'btn'; no.textContent = 'No \u2014 this is the main cart';
+  no.onclick = () => { coPick.second = false; coPick.posterKey = ''; coPick.posterTitle = ''; confirmCheckout(); };
+  const yes = document.createElement('button');
+  yes.className = 'btn secondary'; yes.textContent = 'Yes \u2014 it is a second cart';
+  yes.onclick = () => { coPick.second = true; pickCartPoster(); };
+  const back = document.createElement('button');
+  back.className = 'btn ghost'; back.textContent = '\u2190 Back'; back.onclick = openCheckout;
+  body.appendChild(no); body.appendChild(yes); body.appendChild(back);
+}
+
+async function pickCartPoster() {
+  const body = $('coBody');
+  body.innerHTML = '<p class="subtitle">Loading posters\u2026</p>';
+  const [posters, counts] = await Promise.all([allPosters(), openPosterCounts()]);
+  const sy = serviceYearFor(new Date());
+  const options = dedupePosters(posters).filter(p => !p.isFbc);
+  body.innerHTML =
+    '<p class="subtitle">Choose one additional poster for this second cart.</p>' +
+    '<div class="pgrid"><div class="pcard pnone" data-id="__none__" data-off="0">' +
+    '<div class="pnone-inner">\u2715<span>No additional poster</span></div></div></div>' +
+    renderSections(options, sy, (p) => {
+      const iv = inventoryFor(p, counts);
+      const off = iv.unavailable || iv.error;
+      const badge = featuredNow(p) ? '<span class="pbadge">\u2605 Featured</span>' : '';
+      const avail = iv.error ? '<div class="pmeta" style="color:var(--danger)">Inventory information unavailable at this time</div>'
+                  : (iv.unavailable ? '<div class="pmeta"><b style="color:var(--danger)">Unavailable</b></div>'
+                  : '<div class="pmeta"><b>' + iv.available + ' available</b></div>');
+      return '<div class="pcard' + (off ? ' pcard-off' : '') + '" data-id="' + esc(p.id) + '" data-off="' + (off ? '1' : '0') + '">' +
+             badge + posterImgHTML(p) + '<div class="ptitle">' + esc(p.title || '(untitled)') + '</div>' +
+             (p.pubId ? '<div class="pmeta">' + esc(p.pubId) + '</div>' : '') + avail + '</div>';
+    });
+  body.querySelectorAll('.pcard').forEach(card => {
+    card.onclick = () => {
+      if (card.getAttribute('data-off') === '1') return;
+      const id = card.getAttribute('data-id');
+      if (id === '__none__') { coPick.posterKey = ''; coPick.posterTitle = ''; }
+      else {
+        const p = posters.find(x => x.id === id);
+        coPick.posterKey = id; coPick.posterTitle = p ? p.title : '';
+      }
+      confirmCheckout();
+    };
+  });
+  const back = document.createElement('button');
+  back.className = 'btn ghost'; back.style.marginTop = '10px';
+  back.textContent = '\u2190 Back'; back.onclick = () => askSecondCart(coPick.cartId, coPick.cart);
+  body.appendChild(back);
+}
+
+function confirmCheckout() {
+  const body = $('coBody');
+  const posterRow = coPick.second
+    ? '<div class="row"><span>Additional poster</span><b>' + esc(coPick.posterTitle || 'None') + '</b></div>'
+    : '<div class="row"><span>Poster</span><b>Free Bible Course</b></div>';
+  body.innerHTML =
+    '<div class="detail"><div class="row"><span>Cart</span><b>Cart ' + esc(coPick.cart.number) + '</b></div>' +
+    '<div class="row"><span>Congregation</span><b>' + esc(coPick.cart.congregation) + '</b></div>' +
+    posterRow + '</div>' +
+    '<div class="reminder">Please remember to return the cart' +
+    (coPick.second && coPick.posterKey ? ' and its poster' : '') + ' when you are finished.</div>';
+  const yes = document.createElement('button');
+  yes.className = 'btn'; yes.style.marginTop = '12px'; yes.textContent = 'Check out this cart';
+  yes.onclick = () => doCheckout(coPick.cartId);
+  const back = document.createElement('button');
+  back.className = 'btn ghost'; back.textContent = '\u2190 Back';
+  back.onclick = () => (coPick.second ? pickCartPoster() : askSecondCart(coPick.cartId, coPick.cart));
+  body.appendChild(yes); body.appendChild(back);
+}
+async function doCheckout(cartId) {
+  const msg = $('coMsg'), body = $('coBody');
+  clearMsg(msg); body.classList.add('spin');
+  try {
+    // If an additional poster was chosen, make sure a copy is still free.
+    if (coPick && coPick.second && coPick.posterKey) {
+      const counts = await openPosterCounts();
+      const posters = await allPosters();
+      const p = posters.find(x => x.id === coPick.posterKey);
+      const iv = p ? inventoryFor(p, counts) : { unavailable: true, error: true };
+      if (iv.error) throw new Error('Inventory information unavailable at this time.');
+      if (iv.unavailable) throw new Error('That poster was just taken. Please choose another.');
+    }
+    // A transaction prevents two people grabbing the same cart at the same moment.
+    await runTransaction(db, async (t) => {
+      const ref = doc(db, 'carts', cartId);
+      const snap = await t.get(ref);
+      if (!snap.exists()) throw new Error('That cart no longer exists.');
+      const c = snap.data();
+      if (c.status !== 'Available') throw new Error('Someone just checked out that cart. Please choose another.');
+      t.update(ref, { status: 'Checked Out', currentUserId: state.user.uid, checkoutAt: Timestamp.now() });
+    });
+    const posterType = (coPick && coPick.second) ? 'Additional' : 'Free Bible Course';
+    const posterKey = (coPick && coPick.second) ? (coPick.posterKey || '') : '';
+    const posterTitle = (coPick && coPick.second) ? (coPick.posterTitle || '') : 'Free Bible Course';
+    await addDoc(collection(db, 'transactions'), {
+      cartId, userId: state.user.uid, checkoutAt: serverTimestamp(),
+      returnAt: null, durationDays: null, status: 'Checked Out',
+      posterType, posterKey, posterTitle
+    });
+    body.classList.remove('spin'); body.innerHTML = '';
+    showMsg(msg, 'success', 'Your cart is checked out.' +
+      (posterKey ? ' The poster "' + posterTitle + '" is included.' : '') +
+      ' Please return it when you are finished.');
+    await renderAccountAlerts();
+  } catch (e) {
+    body.classList.remove('spin');
+    showMsg(msg, 'error', e.message || 'Could not check out that cart.');
+    openCheckout();
+  }
+}
+
+/* ---------------- return ---------------- */
+async function openReturn() {
+  show('return'); clearMsg($('rtMsg'));
+  const body = $('rtBody'); body.innerHTML = '<p class="subtitle">Loading\u2026</p>';
+  const cart = await myActiveCart();
+  if (!cart) { body.innerHTML = '<p class="subtitle">You do not have a cart checked out right now.</p>'; return; }
+  const d = daysOut(cart.checkoutAt);
+  const tx = await myOpenTransaction(cart.id);
+  const hasAdditional = !!(tx && tx.posterType === 'Additional' && tx.posterKey);
+  const posterRow = hasAdditional
+    ? '<div class="row"><span>Additional poster</span><b>' + esc(tx.posterTitle) + '</b></div>'
+    : '<div class="row"><span>Poster</span><b>Free Bible Course</b></div>';
+  body.innerHTML =
+    (d >= overdueDays() ? '<span class="pill warn">Overdue</span>' : '') +
+    '<div class="detail">' +
+      '<div class="row"><span>Cart</span><b>Cart ' + esc(cart.number) + '</b></div>' +
+      '<div class="row"><span>Congregation</span><b>' + esc(cart.congregation) + '</b></div>' +
+      '<div class="row"><span>Checked out</span><b>' + esc(fmtDate(cart.checkoutAt)) + '</b></div>' +
+      '<div class="row"><span>Days out</span><b>' + d + '</b></div>' +
+      posterRow +
+    '</div>' +
+    (hasAdditional ? '<p class="hint">Returning the cart also checks this poster back in.</p>' : '') +
+    '<button class="btn" id="rtBtn" style="margin-top:14px;">Return this cart</button>';
+  $('rtBtn').onclick = () => doReturn(cart, tx);
+}
+// My still-open transaction for a cart (carries the poster that went out with it).
+async function myOpenTransaction(cartId) {
+  try {
+    const snap = await getDocs(query(collection(db, 'transactions'),
+      where('userId', '==', state.user.uid), where('status', '==', 'Checked Out')));
+    let hit = null;
+    snap.forEach(s => { if (!hit && s.data().cartId === cartId) hit = Object.assign({ id: s.id, ref: s.ref }, s.data()); });
+    return hit;
+  } catch (e) { return null; }
+}
+
+async function doReturn(cart, tx) {
+  const msg = $('rtMsg'), body = $('rtBody');
+  clearMsg(msg); body.classList.add('spin');
+  try {
+    const d = daysOut(cart.checkoutAt);
+    await updateDoc(doc(db, 'carts', cart.id), { status: 'Available', currentUserId: null, checkoutAt: null });
+    // Closing the transaction also frees any poster that went out with the cart,
+    // because availability is counted from open transactions.
+    const open = tx || await myOpenTransaction(cart.id);
+    const hadPoster = !!(open && open.posterType === 'Additional' && open.posterKey);
+    if (open) await updateDoc(doc(db, 'transactions', open.id),
+      { returnAt: serverTimestamp(), durationDays: d, status: 'Returned' });
+    body.classList.remove('spin'); body.innerHTML = '';
+    showMsg(msg, 'success', 'Cart ' + cart.number + ' has been returned. Thank you!' +
+      (hadPoster ? ' The poster "' + open.posterTitle + '" was checked back in.' : ''));
+    await renderAccountAlerts();
+  } catch (e) {
+    body.classList.remove('spin');
+    showMsg(msg, 'error', 'Could not return the cart: ' + (e.message || e));
+  }
+}
+
+/* ---------------- dashboard (signed in) ---------------- */
+async function openDashboard() { show('dashboard'); loadDashboard(); }
+async function loadDashboard() {
+  const body = $('dashBody'); body.innerHTML = '<p class="subtitle">Loading\u2026</p>';
+  try {
+    const carts = await allCarts();
+    const users = {};
+    try {
+      const us = await getDocs(collection(db, 'users'));
+      us.forEach(u => users[u.id] = u.data());
+    } catch (e) { /* non-admins may only read themselves */ }
+    const od = overdueDays();
+    body.innerHTML = carts.map(c => {
+      const isOut = c.status !== 'Available';
+      const d = isOut ? daysOut(c.checkoutAt) : 0;
+      const over = isOut && d >= od;
+      const who = isOut ? (users[c.currentUserId] ? titleCaseName(users[c.currentUserId].name) : 'In use') : 'Available';
+      const ph = isOut && users[c.currentUserId] ? maskPhone(users[c.currentUserId].phone) : '\u2014';
+      const tag = !isOut ? '<span class="tag avail">Available</span>'
+                : (over ? '<span class="tag over">Overdue</span>' : '<span class="tag out">Checked out</span>');
+      return '<div class="crow"><div class="top"><div><div class="cn">Cart ' + esc(c.number) + '</div>' +
+             '<div class="cg">' + esc(c.congregation) + '</div></div>' + tag + '</div>' +
+             (isOut ? '<div class="meta">' +
+               '<div><span>Who</span><b>' + esc(who) + '</b></div>' +
+               '<div><span>Phone</span><b>' + esc(ph) + '</b></div>' +
+               '<div><span>Checked out</span><b>' + esc(fmtDate(c.checkoutAt)) + '</b></div>' +
+               '<div><span>Days out</span><b>' + d + '</b></div></div>' : '') +
+             '</div>';
+    }).join('') || '<p class="subtitle">No carts yet.</p>';
+  } catch (e) {
+    body.innerHTML = '<p class="subtitle">Could not load the cart list.</p>';
+  }
+}
+
+/* ---------------- admin (fleet + settings) ---------------- */
+async function openAdmin() {
+  show('admin'); clearMsg($('admMsg'));
+  const cfg = state.config || {};
+  const congs = (cfg.congregations && cfg.congregations.length) ? cfg.congregations : DEFAULT_CONGREGATIONS;
+  $('admBody').innerHTML =
+    '<div class="psection-head first">App settings</div>' +
+    '<label for="admAppName">App name</label>' +
+    '<input id="admAppName" type="text" maxlength="60" value="' + esc(cfg.appName || 'Congregation Public Cart System') + '">' +
+    '<label for="admOverdue">Days before a cart is overdue</label>' +
+    '<input id="admOverdue" type="number" min="1" max="60" value="' + esc(String(cfg.overdueDays || 7)) + '">' +
+    '<label for="admSYStart">Service year starts in month <span class="hint" style="display:inline">(9 = September)</span></label>' +
+    '<input id="admSYStart" type="number" min="1" max="12" value="' + esc(String(cfg.serviceYearStartMonth || 9)) + '">' +
+    '<label for="admCongs">Congregations (one per line)</label>' +
+    '<textarea id="admCongs" rows="4">' + esc(congs.join('\n')) + '</textarea>' +
+    '<button class="btn" style="margin-top:12px;" onclick="saveSettings()">Save settings</button>' +
+    '<div class="psection-head">Carts</div>' +
+    '<p class="hint" style="margin-top:0;">Adds carts numbered 1&ndash;N for a congregation. Existing cart numbers are skipped.</p>' +
+    '<label for="admCartCong">Congregation</label>' +
+    '<select id="admCartCong">' + congs.map(c => '<option>' + esc(c) + '</option>').join('') + '</select>' +
+    '<label for="admCartCount">How many carts</label>' +
+    '<input id="admCartCount" type="number" min="1" max="30" value="8">' +
+    '<button class="btn secondary" style="margin-top:12px;" onclick="addCarts()">Add carts</button>' +
+    '<div class="psection-head">Posters &amp; reports</div>' +
+    '<button class="btn" onclick="openAdminPosters()">Manage posters &amp; inventory</button>' +
+    '<button class="btn secondary" onclick="openImport()">Import posters from a spreadsheet</button>' +
+    '<button class="btn secondary" onclick="fixImageLinks()">Repair poster image links</button>' +
+    '<button class="btn secondary" onclick="openAdminIssues()">View reported issues</button>' +
+    '<div class="psection-head">People</div>' +
+    '<button class="btn secondary" onclick="openAdminUsers()">Manage people &amp; administrators</button>';
+}
+async function saveSettings() {
+  const msg = $('admMsg'); clearMsg(msg);
+  const congs = $('admCongs').value.split('\n').map(s => titleCaseWords(s.trim())).filter(Boolean);
+  try {
+    await setDoc(doc(db, 'settings', 'config'), {
+      appName: $('admAppName').value.trim() || 'Congregation Public Cart System',
+      overdueDays: Math.max(1, Number($('admOverdue').value) || 7),
+      serviceYearStartMonth: Math.min(12, Math.max(1, Number($('admSYStart').value) || 9)),
+      congregations: congs.length ? congs : DEFAULT_CONGREGATIONS
+    }, { merge: true });
+    await loadConfig();
+    showMsg(msg, 'success', 'Settings saved.');
+  } catch (e) { showMsg(msg, 'error', 'Could not save: ' + (e.message || e)); }
+}
+async function addCarts() {
+  const msg = $('admMsg'); clearMsg(msg);
+  const cong = $('admCartCong').value;
+  const n = Math.max(1, Math.min(30, Number($('admCartCount').value) || 8));
+  try {
+    const existing = (await allCarts()).filter(c => c.congregation === cong).map(c => String(c.number));
+    let added = 0;
+    for (let i = 1; i <= n; i++) {
+      const num = String(i);
+      if (existing.includes(num)) continue;
+      await addDoc(collection(db, 'carts'), {
+        number: num, congregation: cong, status: 'Available', currentUserId: null, checkoutAt: null
+      });
+      added++;
+    }
+    showMsg(msg, 'success', added ? ('Added ' + added + ' cart' + (added === 1 ? '' : 's') + ' to ' + cong + '.')
+                                  : 'Those cart numbers already exist.');
+    loadHomeStatus();
+  } catch (e) { showMsg(msg, 'error', 'Could not add carts: ' + (e.message || e)); }
+}
+
+
+/* =====================================================================
+ * POSTERS — index, shared inventory, sections, checkout, schedule
+ * ===================================================================== */
+
+const MONTH_NAMES = ['January','February','March','April','May','June',
+                     'July','August','September','October','November','December'];
+const ym = (y, m) => y * 12 + m;                       // sortable month value
+const parseYM = (s) => {                                // "2025-09" -> {y,m,v}
+  const t = /^(\d{4})-(\d{1,2})$/.exec(String(s || '').trim());
+  if (!t) return null;
+  const y = Number(t[1]), m = Number(t[2]);
+  if (m < 1 || m > 12) return null;
+  return { y, m, v: ym(y, m) };
+};
+const MONTH_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const fmtYM = (s) => { const p = parseYM(s); return p ? MONTH_ABBR[p.m - 1] + ' ' + p.y : ''; };
+const fmtYMLong = (s) => { const p = parseYM(s); return p ? MONTH_NAMES[p.m - 1] + ' ' + p.y : ''; };
+
+// Service year starts in September and is named by the year it ENDS in.
+function serviceYearFor(date) {
+  const startMonth = Number((state.config && state.config.serviceYearStartMonth) || 9);
+  const y = date.getFullYear(), m = date.getMonth() + 1;
+  const startYear = (m >= startMonth) ? y : y - 1;
+  return { startYear, endYear: startYear + 1 };
+}
+
+/* ---------------- loading + inventory ---------------- */
+async function allPosters() {
+  const out = [];
+  const snap = await getDocs(collection(db, 'posters'));
+  snap.forEach(d => out.push(Object.assign({ id: d.id }, d.data())));
+  return out;
+}
+
+// Copies currently out, counted across BOTH poster-only checkouts and
+// posters attached to a cart. One shared pool per poster for everyone.
+async function openPosterCounts() {
+  const counts = {};
+  const bump = (k) => { if (k) counts[k] = (counts[k] || 0) + 1; };
+  const pc = await getDocs(query(collection(db, 'posterCheckouts'), where('status', '==', 'Checked Out')));
+  pc.forEach(d => bump(d.data().posterKey));
+  try {
+    const tx = await getDocs(query(collection(db, 'transactions'), where('status', '==', 'Checked Out')));
+    tx.forEach(d => bump(d.data().posterKey));
+  } catch (e) { /* signed-out visitors cannot read transactions */ }
+  return counts;
+}
+
+// available = total - copies out. Never negative; bad data reports an error
+// rather than showing a wrong number.
+function inventoryFor(p, counts) {
+  if (p.isFbc) return { fbc: true, total: null, out: null, available: null, unavailable: false, error: false };
+  const total = Number(p.totalInventory);
+  const out = counts[p.id] || 0;
+  if (!isFinite(total) || total < 0) return { total: null, out, available: 0, unavailable: true, error: true };
+  const available = total - out;
+  if (available < 0) return { total, out, available: 0, unavailable: true, error: true };
+  return { total, out, available, unavailable: available <= 0, error: false };
+}
+
+// w -> Watchtower, g -> Awake, anything else (or an explicit Series) -> Special Request
+function posterCategory(p) {
+  const s = String(p.series || '').toLowerCase();
+  if (s.indexOf('special') > -1) return 'special';
+  if (s.indexOf('watchtower') > -1) return 'watchtower';
+  if (s.indexOf('awake') > -1) return 'awake';
+  const c = String(p.pubId || '').trim().charAt(0).toLowerCase();
+  if (c === 'w') return 'watchtower';
+  if (c === 'g') return 'awake';
+  return 'special';
+}
+// Is this poster scheduled inside the given service year (Sept..Aug)?
+function scheduledIn(p, sy) {
+  const s = parseYM(p.featuredStart); if (!s) return false;
+  const e = parseYM(p.featuredEnd) || s;
+  return s.v <= ym(sy.endYear, 8) && e.v >= ym(sy.startYear, 9);
+}
+const featuredNow = (p) => {
+  const s = parseYM(p.featuredStart); if (!s) return false;
+  const e = parseYM(p.featuredEnd) || s;
+  const n = new Date(), v = ym(n.getFullYear(), n.getMonth() + 1);
+  return v >= s.v && v <= e.v;
+};
+
+// Share links from Drive/Dropbox point at a viewer page, not the image itself,
+// so an <img> tag shows nothing. Convert them to direct image URLs.
+function normalizeImageUrl(raw) {
+  let link = String(raw || '').trim();
+  if (!link) return '';
+  if (/^www\./i.test(link)) link = 'https://' + link;
+
+  // Google Drive: /file/d/<id>/..., open?id=<id>, uc?id=<id>, thumbnail?id=<id>
+  let m = link.match(/drive\.google\.com\/file\/d\/([-\w]{10,})/)
+       || link.match(/drive\.google\.com\/(?:open|uc|thumbnail)\?(?:[^#]*&)?id=([-\w]{10,})/)
+       || link.match(/docs\.google\.com\/uc\?(?:[^#]*&)?id=([-\w]{10,})/);
+  if (m) return 'https://drive.google.com/thumbnail?id=' + m[1] + '&sz=w1000';
+
+  // Dropbox shared links
+  if (/dropbox\.com/i.test(link)) {
+    return link.replace(/([?&])dl=0/, '$1raw=1').replace(/([?&])raw=0/, '$1raw=1') +
+           (/[?&](raw|dl)=/.test(link) ? '' : (link.indexOf('?') > -1 ? '&raw=1' : '?raw=1'));
+  }
+  return link;
+}
+
+function posterImgHTML(p) {
+  const link = String(p.imageLink || '').trim();
+  const low = link.toLowerCase();
+  if (!link) return '<div class="pimg"><div class="pph">Image coming soon</div></div>';
+  if (low === 'tba' || low === 'tbd') return '<div class="pimg"><div class="pph">TBA</div></div>';
+  return '<div class="pimg"><img alt="" loading="lazy" src="' + esc(normalizeImageUrl(link)) + '" onerror="posterImgFail(this)"></div>';
+}
+function posterImgFail(img) { img.parentNode.innerHTML = '<div class="pph">Information unavailable</div>'; }
+
+/* ---------------- duplicate publication checking ---------------- */
+// Two rows sharing a Publication ID are the same publication entered twice.
+// The display keeps the first and hides the rest, so a poster never appears
+// twice; administrators get a warning listing every duplicate.
+const dupKeyOf = (p) => String(p.pubId || '').trim().toLowerCase().replace(/\s+/g, '');
+
+function findDuplicates(list) {
+  const seen = {}, dups = [];
+  list.forEach(p => {
+    const k = dupKeyOf(p);
+    if (!k) return;
+    if (seen[k]) { if (dups.indexOf(seen[k]) === -1) dups.push(seen[k]); dups.push(p); }
+    else seen[k] = p;
+  });
+  return dups;
+}
+function dedupePosters(list) {
+  const seen = {}, out = [];
+  list.forEach(p => {
+    const k = dupKeyOf(p);
+    if (k) { if (seen[k]) return; seen[k] = true; }
+    out.push(p);
+  });
+  return out;
+}
+
+/* ---------------- sectioned rendering (shared by all poster views) ---------------- */
+const POSTER_SECTIONS = [
+  { key: 'featured',   label: '\u2605 Featured Posters \u2014 Current Service Year' },
+  { key: 'watchtower', label: 'Watchtower Posters' },
+  { key: 'awake',      label: 'Awake Posters' },
+  { key: 'special',    label: 'Special Request Posters' }
+];
+function groupPosters(list, sy) {
+  const byTitle = (a, b) => String(a.title || '').localeCompare(String(b.title || ''));
+  const bySchedule = (a, b) => {
+    const av = (parseYM(a.featuredStart) || { v: 1e9 }).v, bv = (parseYM(b.featuredStart) || { v: 1e9 }).v;
+    return av - bv || byTitle(a, b);
+  };
+  const g = { featured: [], watchtower: [], awake: [], special: [] };
+  list.forEach(p => {
+    if (scheduledIn(p, sy)) g.featured.push(p);
+    else g[posterCategory(p)].push(p);
+  });
+  g.featured.sort(bySchedule);
+  ['watchtower', 'awake', 'special'].forEach(k => g[k].sort(byTitle));
+  return g;
+}
+function renderSections(list, sy, cardFn) {
+  const g = groupPosters(list, sy);
+  let html = '', first = true;
+  POSTER_SECTIONS.forEach(sec => {
+    const items = g[sec.key];
+    if (!items.length) return;
+    html += '<div class="psection-head' + (first ? ' first' : '') + '">' + esc(sec.label) + '</div><div class="pgrid">';
+    items.forEach(p => { html += cardFn(p); });
+    html += '</div>';
+    first = false;
+  });
+  return html || emptyPostersHTML();
+}
+
+function emptyPostersHTML() {
+  // Posters live in the app's own database, so the index starts empty.
+  return '<div class="guide-intro" style="margin-top:12px;">' +
+    '<b>No posters have been added yet.</b><br>' +
+    (state.profile && state.profile.admin
+      ? 'Tap the button below to add your first poster to the Feature Poster Index.'
+      : 'A coordinator needs to add them under Admin &rsaquo; Manage posters &amp; inventory.') +
+    '</div>' +
+    (state.profile && state.profile.admin
+      ? '<button class="btn" onclick="openAdminPosters()">Add posters now</button>' : '');
+}
+
+/* ---------------- View Posters ---------------- */
+async function openPosterView() {
+  show('posters'); clearMsg($('pvMsg'));
+  const body = $('pvBody'); body.innerHTML = '<p class="subtitle">Loading\u2026</p>';
+  try {
+    const [posters, counts] = await Promise.all([allPosters(), openPosterCounts()]);
+    const sy = serviceYearFor(new Date());
+    const now = new Date();
+    $('pvSub').textContent = MONTH_NAMES[now.getMonth()] + ' ' + now.getFullYear() +
+                             '  \u00b7  Service Year ' + sy.endYear;
+    body.innerHTML = renderSections(dedupePosters(posters), sy, (p) => {
+      const iv = inventoryFor(p, counts);
+      const badge = featuredNow(p) ? '<span class="pbadge">\u2605 Featured</span>' : '';
+      const right = p.isFbc ? '<span class="pbadge blue" style="left:auto;right:6px;">Required</span>'
+                  : (iv.unavailable ? '<span class="pbadge over" style="left:auto;right:6px;">Unavailable</span>' : '');
+      const avail = p.isFbc ? '<div class="pmeta">Always available</div>'
+                  : (iv.error ? '<div class="pmeta" style="color:var(--danger)">Inventory information unavailable at this time</div>'
+                  : '<div class="pmeta"><b>' + iv.available + ' available</b> of ' + iv.total + '</div>');
+      return '<div class="pcard' + (iv.unavailable ? ' out' : '') + '">' + badge + right + posterImgHTML(p) +
+             '<div class="ptitle">' + esc(p.title || '(untitled)') + '</div>' +
+             (p.pubId ? '<div class="pmeta">' + esc(p.pubId) + '</div>' : '') + avail +
+             (p.featuredStart ? '<div class="pmeta">' + esc(fmtYM(p.featuredStart)) +
+                (p.featuredEnd && p.featuredEnd !== p.featuredStart ? ' \u2013 ' + esc(fmtYM(p.featuredEnd)) : '') + '</div>' : '') +
+             '<div class="plang">' + (p.language === 'S' ? 'Spanish' : 'English') + '</div>' +
+             '</div>';
+    });
+  } catch (e) { body.innerHTML = ''; showMsg($('pvMsg'), 'error', 'Could not load posters.'); }
+}
+
+/* ---------------- Poster-only checkout ---------------- */
+async function myActivePoster() {
+  if (!state.user) return null;
+  const snap = await getDocs(query(collection(db, 'posterCheckouts'),
+    where('userId', '==', state.user.uid), where('status', '==', 'Checked Out')));
+  let found = null;
+  snap.forEach(d => { if (!found) found = Object.assign({ id: d.id }, d.data()); });
+  return found;
+}
+async function openPosterCheckout() {
+  show('posterco'); clearMsg($('pcMsg'));
+  const body = $('pcBody'); body.innerHTML = '<p class="subtitle">Loading\u2026</p>';
+  try {
+    const mine = await myActivePoster();
+    if (mine) {
+      body.innerHTML =
+        '<span class="pill">Checked out to you</span>' +
+        '<div class="detail"><div class="row"><span>Poster</span><b>' + esc(mine.posterTitle) + '</b></div>' +
+        '<div class="row"><span>Checked out</span><b>' + esc(fmtDate(mine.checkoutAt)) + '</b></div></div>' +
+        '<p class="hint">You may hold one poster at a time. Return it to check out another.</p>' +
+        '<button class="btn danger" id="pcRet" style="margin-top:12px;">Return this poster</button>';
+      $('pcRet').onclick = () => returnPoster(mine);
+      return;
+    }
+    const [posters, counts] = await Promise.all([allPosters(), openPosterCounts()]);
+    const sy = serviceYearFor(new Date());
+    const selectable = dedupePosters(posters).filter(p => !p.isFbc);
+    body.innerHTML = '<p class="subtitle">Choose a poster. Availability is shown on each card.</p>' +
+      renderSections(selectable, sy, (p) => {
+        const iv = inventoryFor(p, counts);
+        const off = iv.unavailable || iv.error;
+        const badge = featuredNow(p) ? '<span class="pbadge">\u2605 Featured</span>' : '';
+        const avail = iv.error ? '<div class="pmeta" style="color:var(--danger)">Inventory information unavailable at this time</div>'
+                    : (iv.unavailable ? '<div class="pmeta"><b style="color:var(--danger)">Unavailable</b></div>'
+                    : '<div class="pmeta"><b>' + iv.available + ' available</b></div>');
+        return '<div class="pcard' + (off ? ' pcard-off' : '') + '" data-id="' + esc(p.id) + '" data-off="' + (off ? '1' : '0') + '">' +
+               badge + posterImgHTML(p) + '<div class="ptitle">' + esc(p.title || '(untitled)') + '</div>' +
+               (p.pubId ? '<div class="pmeta">' + esc(p.pubId) + '</div>' : '') + avail + '</div>';
+      });
+    body.querySelectorAll('.pcard').forEach(card => {
+      card.onclick = () => {
+        if (card.getAttribute('data-off') === '1') return;
+        confirmPoster(posters.find(p => p.id === card.getAttribute('data-id')));
+      };
+    });
+  } catch (e) { body.innerHTML = ''; showMsg($('pcMsg'), 'error', 'Could not load posters.'); }
+}
+function confirmPoster(p) {
+  const body = $('pcBody');
+  body.innerHTML = '<div class="detail"><div class="row"><span>Poster</span><b>' + esc(p.title) + '</b></div></div>' +
+                   '<div class="reminder">Reminder: this poster must be returned and checked back in when you are finished.</div>';
+  const yes = document.createElement('button');
+  yes.className = 'btn'; yes.style.marginTop = '12px'; yes.textContent = 'Check out this poster';
+  yes.onclick = () => checkoutPoster(p);
+  const back = document.createElement('button');
+  back.className = 'btn ghost'; back.textContent = '\u2190 Back'; back.onclick = openPosterCheckout;
+  body.appendChild(yes); body.appendChild(back);
+}
+async function checkoutPoster(p) {
+  const msg = $('pcMsg'), body = $('pcBody');
+  clearMsg(msg); body.classList.add('spin');
+  try {
+    // Re-check availability at the moment of checkout so the last copy
+    // cannot be taken twice.
+    const counts = await openPosterCounts();
+    const iv = inventoryFor(p, counts);
+    if (iv.error) throw new Error('Inventory information unavailable at this time.');
+    if (iv.unavailable) throw new Error('That poster was just taken. Please choose another.');
+    if (await myActivePoster()) throw new Error('You already have a poster checked out.');
+    await addDoc(collection(db, 'posterCheckouts'), {
+      posterKey: p.id, posterTitle: p.title || '', userId: state.user.uid,
+      checkoutAt: serverTimestamp(), returnAt: null, status: 'Checked Out'
+    });
+    body.classList.remove('spin');
+    showMsg(msg, 'success', 'Poster "' + p.title + '" is checked out to you.');
+    openPosterCheckout();
+  } catch (e) {
+    body.classList.remove('spin');
+    showMsg(msg, 'error', e.message || 'Could not check out that poster.');
+    openPosterCheckout();
+  }
+}
+async function returnPoster(rec) {
+  const msg = $('pcMsg'), body = $('pcBody');
+  clearMsg(msg); body.classList.add('spin');
+  try {
+    await updateDoc(doc(db, 'posterCheckouts', rec.id), { returnAt: serverTimestamp(), status: 'Returned' });
+    body.classList.remove('spin');
+    showMsg(msg, 'success', 'Poster "' + rec.posterTitle + '" has been returned. Thank you!');
+    openPosterCheckout();
+  } catch (e) {
+    body.classList.remove('spin');
+    showMsg(msg, 'error', 'Could not return the poster: ' + (e.message || e));
+  }
+}
+
+/* ---------------- Featured Publications schedule ---------------- */
+let schData = null;
+let schOffset = 0;
+
+async function openSchedule() { show('schedule'); clearMsg($('schMsg')); schOffset = 0; loadSchedule(0); }
+function stepSchedule(delta) { loadSchedule(schOffset + delta); }
+
+async function loadSchedule(offset) {
+  schOffset = Number(offset) || 0;
+  const body = $('schBody'); body.innerHTML = '<p class="subtitle">Loading\u2026</p>';
+  try {
+    const base = serviceYearFor(new Date());
+    const endYear = base.endYear + schOffset, startYear = endYear - 1;
+    const posters = await allPosters();
+    const slots = [
+      { period: 'Sep/Oct ' + startYear, months: [ym(startYear, 9), ym(startYear, 10)] },
+      { period: 'Nov/Dec ' + startYear, months: [ym(startYear, 11), ym(startYear, 12)] },
+      { period: 'Jan/Feb ' + endYear,   months: [ym(endYear, 1), ym(endYear, 2)] },
+      { period: 'Mar/Apr ' + endYear,   months: [ym(endYear, 3), ym(endYear, 4)] },
+      { period: 'May/Jun ' + endYear,   months: [ym(endYear, 5), ym(endYear, 6)] },
+      { period: 'Jul/Aug ' + endYear,   months: [ym(endYear, 7), ym(endYear, 8)] }
+    ];
+    const cells = slots.map(s => {
+      const hit = posters.find(p => {
+        const a = parseYM(p.featuredStart); if (!a) return false;
+        const b = parseYM(p.featuredEnd) || a;
+        return s.months.some(v => v >= a.v && v <= b.v);
+      });
+      return { period: s.period, poster: hit || null };
+    });
+    schData = { serviceYear: endYear, startYear, cells };
+
+    $('schYear').textContent = endYear + ' Service Year';
+    $('schRange').textContent = 'Sep ' + startYear + ' \u2013 Aug ' + endYear +
+      (schOffset === 0 ? ' \u00b7 current' : '');
+    $('schSub').textContent = '';
+    const jump = $('schThisBtn'); if (jump) jump.style.display = schOffset === 0 ? 'none' : '';
+
+    const assigned = cells.filter(c => c.poster).length;
+    // If this year has nothing, point to a year that does rather than showing six blanks.
+    let notice = '';
+    if (!assigned) {
+      const years = posters.map(p => parseYM(p.featuredStart)).filter(Boolean)
+        .map(v => (v.m >= 9 ? v.y + 1 : v.y));
+      const uniq = [...new Set(years)].sort();
+      notice = '<div class="guide-intro" style="margin-bottom:14px;"><b>Nothing is scheduled for this service year yet.</b>' +
+        (uniq.length ? '<br>Posters are scheduled for: ' +
+            uniq.map(y => '<a href="#" onclick="loadSchedule(' + (y - base.endYear) + ');return false;">' + y + '</a>').join(', ') + '.'
+          : '<br>Add featured months to your posters under Admin &rsaquo; Manage posters &amp; inventory.') +
+        '</div>';
+    }
+
+    body.innerHTML = notice +
+      '<div class="sched-title-main">' + endYear + ' Service Year \u2014 Featured Publications</div>' +
+      '<div class="sched-grid">' + cells.map(c =>
+        '<div class="sched-cell"><div class="sched-period">' + esc(c.period) + '</div>' +
+        '<div class="sched-img">' + (c.poster ? schedImg(c.poster) : '<div class="sched-ph">Not yet assigned</div>') + '</div>' +
+        '<div class="sched-cap">' + (c.poster ? esc(schedCaption(c.poster)) : '<span class="sched-empty">Not yet assigned</span>') + '</div></div>'
+      ).join('') + '</div>';
+  } catch (e) { body.innerHTML = '<p class="subtitle">Could not load the schedule.</p>'; }
+}
+
+function schedImg(p, forPrint) {
+  const link = String(p.imageLink || '').trim(), low = link.toLowerCase();
+  if (!link) return '<div class="sched-ph">Image coming soon</div>';
+  if (low === 'tba' || low === 'tbd') return '<div class="sched-ph">TBA</div>';
+  return '<img alt="" src="' + esc(normalizeImageUrl(link)) + '"' +
+         (forPrint ? '' : ' onerror="schedImgFail(this)"') + '>';
+}
+function schedImgFail(img) { img.parentNode.innerHTML = '<div class="sched-ph">Image unavailable</div>'; }
+function schedCaption(p) {
+  let cap = '';
+  if (p.edition) cap += p.edition + ' | ';
+  cap += (p.title || '');
+  if (p.pubId) cap += ' - ' + p.pubId;
+  return cap;
+}
+function printSchedule() {
+  if (!schData) { showMsg($('schMsg'), 'error', 'Please wait for the schedule to load, then tap Print.'); return; }
+  const appName = $('appName').textContent || 'Congregation Cart Program';
+  const dateStr = new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+
+  const cells = schData.cells.map(c =>
+    '<div class="ps-cell"><div class="ps-per">' + esc(c.period) + '</div>' +
+    '<div class="ps-img">' + (c.poster ? schedImg(c.poster) : '<div class="ps-ph">Not yet assigned</div>') + '</div>' +
+    '<div class="ps-cap">' + (c.poster ? esc(schedCaption(c.poster)) : 'Not yet assigned') + '</div></div>').join('');
+
+  $('printSheet').innerHTML =
+    '<div class="ps-sheet">' +
+      '<div class="ps-hdr">' + esc(appName) + '</div>' +
+      '<div class="ps-ttl">' + esc(schData.serviceYear + ' Service Year \u2014 Featured Publications') + '</div>' +
+      '<div class="ps-grid">' + cells + '</div>' +
+      '<div class="ps-ftr">' + esc(dateStr) + '</div>' +
+    '</div>';
+
+  // Wait for the covers so the printed sheet is never half-blank, then print
+  // the page itself — no pop-up and no blob link, which mobile browsers block.
+  const imgs = Array.from($('printSheet').querySelectorAll('img'));
+  let left = imgs.filter(i => !i.complete).length;
+  let fired = false;
+  const go = () => { if (fired) return; fired = true; setTimeout(() => { try { window.print(); } catch (e) {} }, 120); };
+  if (!left) return go();
+  imgs.forEach(i => {
+    if (i.complete) return;
+    const done = () => { if (--left <= 0) go(); };
+    i.addEventListener('load', done, { once: true });
+    i.addEventListener('error', done, { once: true });
+  });
+  setTimeout(go, 4000);
+}
+
+/* ---------------- Issue reports (in-app, no email on the free plan) ---------------- */
+function openIssues() { show('issues'); clearMsg($('isMsg')); }
+async function submitIssue() {
+  const msg = $('isMsg'), btn = $('isBtn');
+  const text = $('isText').value.trim();
+  clearMsg(msg);
+  if (!text) return showMsg(msg, 'error', 'Please describe the issue.');
+  btn.classList.add('spin'); btn.textContent = 'Sending\u2026';
+  try {
+    await addDoc(collection(db, 'issues'), {
+      description: text.slice(0, 3000),
+      userId: state.user ? state.user.uid : null,
+      name: state.profile ? state.profile.name : '',
+      congregation: state.profile ? state.profile.congregation : '',
+      createdAt: serverTimestamp(), resolved: false
+    });
+    $('isText').value = '';
+    showMsg(msg, 'success', 'Thank you \u2014 your report was sent to the administrators.');
+  } catch (e) {
+    showMsg(msg, 'error', 'Could not send the report: ' + (e.message || e));
+  }
+  btn.classList.remove('spin'); btn.textContent = 'Send report';
+}
+
+/* ---------------- Admin: poster index, service year, languages ---------------- */
+async function openAdminPosters() {
+  show('admin'); clearMsg($('admMsg'));
+  const body = $('admBody'); body.innerHTML = '<p class="subtitle">Loading\u2026</p>';
+  const [posters, counts] = await Promise.all([allPosters(), openPosterCounts()]);
+  const sy = serviceYearFor(new Date());
+  posters.sort((a, b) => {
+    const av = (parseYM(a.featuredStart) || { v: 1e9 }).v, bv = (parseYM(b.featuredStart) || { v: 1e9 }).v;
+    return av - bv || String(a.title || '').localeCompare(String(b.title || ''));
+  });
+  const dups = findDuplicates(posters);
+  const dupIds = {}; dups.forEach(d => { dupIds[d.id] = true; });
+  const dupBanner = dups.length
+    ? '<div class="reminder"><b>' + dups.length + ' duplicate entries found.</b><br>' +
+      'These share a Publication ID with another poster, so only the first of each is shown to users. ' +
+      'Edit or delete the extras:<br>' +
+      dups.map(d => '&bull; ' + esc(d.title || '(untitled)') + ' \u2014 <b>' + esc(d.pubId) + '</b>').join('<br>') +
+      '</div>'
+    : '';
+  body.innerHTML =
+    '<button class="btn ghost" style="padding-left:0;" onclick="openAdmin()">&larr; Admin menu</button>' +
+    '<div class="psection-head first">Feature Poster Index</div>' + dupBanner +
+    '<p class="hint" style="margin-top:0;">Service Year ' + sy.endYear + ' (September ' + sy.startYear + ' \u2013 August ' + sy.endYear + ').</p>' +
+    '<button class="btn" onclick="editPoster(null)">+ Add a poster</button>' +
+    (posters.length ? posters.map(p => {
+      const iv = inventoryFor(p, counts);
+      const tag = dupIds[p.id] ? '<span class="tag over">Duplicate</span>'
+                : p.isFbc ? '<span class="tag out">Required</span>'
+                : (iv.error ? '<span class="tag over">Inventory?</span>'
+                : (iv.unavailable ? '<span class="tag over">0 left</span>'
+                : '<span class="tag avail">' + iv.available + ' of ' + iv.total + '</span>'));
+      return '<div class="crow"><div class="top"><div><div class="cn">' + esc(p.title || '(untitled)') + '</div>' +
+             '<div class="cg">' + esc(p.pubId || '') + ' \u00b7 ' + (p.language === 'S' ? 'Spanish' : 'English') + '</div></div>' + tag + '</div>' +
+             '<div class="meta"><div><span>Featured</span><b>' +
+             (p.featuredStart ? esc(fmtYM(p.featuredStart) + (p.featuredEnd && p.featuredEnd !== p.featuredStart ? ' \u2013 ' + fmtYM(p.featuredEnd) : '')) : '\u2014') +
+             '</b></div></div>' +
+             '<button class="btn secondary" style="margin-top:10px;" onclick="editPoster(\'' + esc(p.id) + '\')">Edit</button></div>';
+    }).join('') : '<p class="subtitle">No posters yet. Tap &ldquo;Add a poster&rdquo; to begin.</p>');
+}
+
+let editingPoster = null;
+async function editPoster(id) {
+  show('posteredit'); clearMsg($('peMsg'));
+  let p = { title:'', pubId:'', edition:'', imageLink:'', language:'E', series:'',
+            totalInventory:4, featuredStart:'', featuredEnd:'', isFbc:false };
+  if (id) {
+    const snap = await getDoc(doc(db, 'posters', id));
+    if (snap.exists()) p = Object.assign(p, snap.data());
+  }
+  editingPoster = id;
+  $('peTitle').textContent = id ? 'Edit poster' : 'Add a poster';
+  $('peBody').innerHTML =
+    '<label for="peTitleIn">Title</label><input id="peTitleIn" type="text" maxlength="120" value="' + esc(p.title) + '">' +
+    '<label for="pePub">Publication ID <span class="hint" style="display:inline">(w&hellip; = Watchtower, g&hellip; = Awake)</span></label>' +
+    '<input id="pePub" type="text" maxlength="40" value="' + esc(p.pubId) + '" placeholder="wp25.1">' +
+    '<label for="peEdition">Edition <span class="hint" style="display:inline">(shown on the printed schedule)</span></label>' +
+    '<input id="peEdition" type="text" maxlength="40" value="' + esc(p.edition || '') + '" placeholder="No. 1 2025">' +
+    '<label for="peImg">Image link <span class="hint" style="display:inline">(or type TBA)</span></label>' +
+    '<input id="peImg" type="text" maxlength="500" value="' + esc(p.imageLink) + '">' +
+    '<label for="peLang">Language</label><select id="peLang">' +
+      '<option value="E"' + (p.language !== 'S' ? ' selected' : '') + '>English</option>' +
+      '<option value="S"' + (p.language === 'S' ? ' selected' : '') + '>Spanish</option></select>' +
+    '<label for="peSeries">Section <span class="hint" style="display:inline">(leave on Automatic to use the ID)</span></label>' +
+    '<select id="peSeries">' +
+      ['', 'Watchtower', 'Awake', 'Special Request'].map(s =>
+        '<option value="' + s + '"' + (String(p.series || '') === s ? ' selected' : '') + '>' + (s || 'Automatic') + '</option>').join('') +
+    '</select>' +
+    '<label for="peTotal">Total inventory (physical copies)</label>' +
+    '<input id="peTotal" type="number" min="0" max="99" value="' + esc(String(p.totalInventory == null ? 4 : p.totalInventory)) + '">' +
+    '<label for="peStart">Featured from <span class="hint" style="display:inline">(leave blank if not scheduled)</span></label>' +
+    '<input id="peStart" type="month" value="' + esc(p.featuredStart || '') + '">' +
+    '<label for="peEnd">Featured through</label><input id="peEnd" type="month" value="' + esc(p.featuredEnd || '') + '">' +
+    '<label style="margin-top:16px;"><input id="peFbc" type="checkbox" style="width:auto; margin-right:8px;"' +
+      (p.isFbc ? ' checked' : '') + '> Free Bible Course poster (always available)</label>' +
+    '<button class="btn" style="margin-top:16px;" onclick="savePoster()">Save poster</button>' +
+    (id ? '<button class="btn danger" onclick="deletePoster()">Delete poster</button>' : '');
+}
+async function savePoster() {
+  const msg = $('peMsg'); clearMsg(msg);
+  const title = $('peTitleIn').value.trim();
+  if (!title) return showMsg(msg, 'error', 'Please enter a title.');
+  const start = $('peStart').value, end = $('peEnd').value;
+  if (start && end && parseYM(end) && parseYM(start) && parseYM(end).v < parseYM(start).v)
+    return showMsg(msg, 'error', '&ldquo;Featured through&rdquo; cannot be before &ldquo;Featured from&rdquo;.');
+  const data = {
+    title: titleCaseWords(title), pubId: $('pePub').value.trim(), edition: $('peEdition').value.trim(),
+    imageLink: normalizeImageUrl($('peImg').value.trim()), language: $('peLang').value,
+    series: $('peSeries').value, totalInventory: Math.max(0, Number($('peTotal').value) || 0),
+    featuredStart: start || '', featuredEnd: end || start || '', isFbc: $('peFbc').checked
+  };
+  try {
+    if (editingPoster) await setDoc(doc(db, 'posters', editingPoster), data, { merge: true });
+    else await addDoc(collection(db, 'posters'), data);
+    showMsg(msg, 'success', 'Poster saved.');
+    setTimeout(openAdminPosters, 600);
+  } catch (e) { showMsg(msg, 'error', 'Could not save: ' + (e.message || e)); }
+}
+async function deletePoster() {
+  if (!editingPoster) return;
+  if (!confirm('Delete this poster from the index? Checkout history is kept.')) return;
+  try {
+    await deleteDoc(doc(db, 'posters', editingPoster));
+    openAdminPosters();
+  } catch (e) { showMsg($('peMsg'), 'error', 'Could not delete: ' + (e.message || e)); }
+}
+
+/* ---------------- Admin: issue reports ---------------- */
+async function openAdminIssues() {
+  show('admin'); clearMsg($('admMsg'));
+  const body = $('admBody'); body.innerHTML = '<p class="subtitle">Loading\u2026</p>';
+  try {
+    const snap = await getDocs(collection(db, 'issues'));
+    const list = [];
+    snap.forEach(d => list.push(Object.assign({ id: d.id }, d.data())));
+    list.sort((a, b) => ((b.createdAt && b.createdAt.seconds) || 0) - ((a.createdAt && a.createdAt.seconds) || 0));
+    body.innerHTML =
+      '<button class="btn ghost" style="padding-left:0;" onclick="openAdmin()">&larr; Admin menu</button>' +
+      '<div class="psection-head first">Reported issues</div>' +
+      (list.length ? list.map(i =>
+        '<div class="crow"><div class="top"><div class="cn">' + esc(titleCaseName(i.name) || 'Someone') + '</div>' +
+        (i.resolved ? '<span class="tag avail">Resolved</span>' : '<span class="tag over">Open</span>') + '</div>' +
+        '<div class="cg">' + esc(i.congregation || '') + ' \u00b7 ' + esc(fmtDate(i.createdAt)) + '</div>' +
+        '<p style="margin:10px 0 0; line-height:1.5;">' + esc(i.description) + '</p>' +
+        (i.resolved ? '' : '<button class="btn secondary" style="margin-top:10px;" onclick="resolveIssue(\'' + esc(i.id) + '\')">Mark resolved</button>') +
+        '</div>').join('') : '<p class="subtitle">No issues have been reported.</p>');
+  } catch (e) { body.innerHTML = '<p class="subtitle">Could not load issues.</p>'; }
+}
+async function resolveIssue(id) {
+  try { await updateDoc(doc(db, 'issues', id), { resolved: true }); openAdminIssues(); }
+  catch (e) { showMsg($('admMsg'), 'error', 'Could not update: ' + (e.message || e)); }
+}
+
+
+/* ---------------- appearance: colour theme + night mode ---------------- */
+const THEMES = [
+  { key: '',       name: 'Classic blue', color: '#3a67ac' },
+  { key: 'teal',   name: 'Teal',         color: '#0f766e' },
+  { key: 'forest', name: 'Forest',       color: '#166534' },
+  { key: 'plum',   name: 'Plum',         color: '#6d28d9' },
+  { key: 'slate',  name: 'Slate',        color: '#334155' }
+];
+const currentTheme = () => localStorage.getItem('cartTheme') || '';
+const isDark = () => document.documentElement.getAttribute('data-mode') === 'dark';
+
+function setTheme(key) {
+  if (key) document.documentElement.setAttribute('data-theme', key);
+  else document.documentElement.removeAttribute('data-theme');
+  try { localStorage.setItem('cartTheme', key); } catch (e) {}
+  paintSwatches();
+}
+function toggleMode() {
+  const dark = !isDark();
+  if (dark) document.documentElement.setAttribute('data-mode', 'dark');
+  else document.documentElement.removeAttribute('data-mode');
+  try { localStorage.setItem('cartMode', dark ? 'dark' : 'light'); } catch (e) {}
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute('content', dark ? '#0b0f16' : '#1a202c');
+  const btn = $('modeBtn'); if (btn) btn.innerHTML = dark ? '&#9788;' : '&#9789;';
+  const tb = $('modeToggleBtn'); if (tb) tb.textContent = dark ? 'Switch to day mode' : 'Switch to night mode';
+}
+function paintSwatches() {
+  const box = $('swatches'); if (!box) return;
+  const cur = currentTheme();
+  box.innerHTML = THEMES.map(t =>
+    '<button class="swatch' + (t.key === cur ? ' on' : '') + '" title="' + esc(t.name) + '" ' +
+    'style="background:' + t.color + '" onclick="setTheme(\'' + t.key + '\')"></button>').join('');
+}
+function openSettings() {
+  show('settings');
+  paintSwatches();
+  const tb = $('modeToggleBtn'); if (tb) tb.textContent = isDark() ? 'Switch to day mode' : 'Switch to night mode';
+}
+
+/* ---------------- bottom navigation ---------------- */
+function navGo(which) {
+  if (which === 'home')     return show('home');
+  if (which === 'checkout') return requireLogin('checkout');
+  if (which === 'posters')  return requireLogin('posters');
+  if (which === 'schedule') return requireLogin('schedule');
+  if (which === 'more')     return state.profile ? show('account') : show('login');
+}
+function markNav(view) {
+  const map = { home:'home', checkout:'checkout', return:'checkout', posterco:'posters',
+                posters:'posters', schedule:'schedule', account:'more', settings:'more',
+                admin:'more', issues:'more', instructions:'more', dashboard:'more',
+                posteredit:'more', profile:'more', login:'more' };
+  const on = map[view] || '';
+  ['home','checkout','posters','schedule','more'].forEach(k => {
+    const b = $('nav-' + k); if (b) b.classList.toggle('on', k === on);
+  });
+}
+
+
+/* ---------------- Import posters from a spreadsheet ---------------- */
+let importRows = [];
+
+function openImport() { show('import'); clearMsg($('impMsg')); $('impPreview').innerHTML = ''; importRows = []; }
+
+// Match a spreadsheet header to one of our fields, however it is worded.
+function mapHeader(name) {
+  const n = String(name || '').toLowerCase().replace(/[^a-z]/g, '');
+  if (!n) return null;
+  if (n.includes('series') || n.includes('section') || n.includes('category')) return 'series';
+  if (n.includes('edition') || n.includes('issue')) return 'edition';
+  if (n === 'title' || n.includes('publicationtitle') || n.includes('postertitle') || n === 'name') return 'title';
+  if (n.includes('publicationid') || n === 'pubid' || n === 'pub') return 'pubId';
+  if (n.includes('image') || n.includes('link') || n.includes('url') || n.includes('cover')) return 'imageLink';
+  if (n.includes('featuredmonth') || n.includes('month') || n.includes('displayed')) return 'months';
+  if (n.includes('inventory') || n.includes('total') || n.includes('copies') || n.includes('qty') || n.includes('quantity')) return 'total';
+  if (n.includes('language') || n === 'lang') return 'language';
+  if (n === 'id' || n.includes('itemid')) return 'itemId';
+  return null;
+}
+
+const MONTH_LOOKUP = {
+  jan:1, feb:2, mar:3, apr:4, may:5, jun:6, jul:7, aug:8, sep:9, sept:9, oct:10, nov:11, dec:12
+};
+// Understands "Sept/Oct 2025", "September 2025 - October 2025", "Jan/Feb 2026", etc.
+function parseMonthsText(text) {
+  const s = String(text || '').trim();
+  if (!s) return { start: '', end: '' };
+  const years = (s.match(/(20\d{2})/g) || []).map(Number);
+  const months = [];
+  const re = /([a-z]+)/gi; let m;
+  while ((m = re.exec(s)) !== null) {
+    const key = m[1].toLowerCase().slice(0, 4);
+    const val = MONTH_LOOKUP[key] || MONTH_LOOKUP[key.slice(0, 3)];
+    if (val) months.push(val);
+  }
+  if (!months.length || !years.length) return { start: '', end: '' };
+  const pad = (n) => (n < 10 ? '0' + n : String(n));
+  const y1 = years[0];
+  const startM = months[0];
+  const endM = months.length > 1 ? months[1] : months[0];
+  // A range like Nov/Dec -> Jan/Feb rolls into the next year.
+  const y2 = years.length > 1 ? years[1] : (endM < startM ? y1 + 1 : y1);
+  return { start: y1 + '-' + pad(startM), end: y2 + '-' + pad(endM) };
+}
+
+function previewImport() {
+  const msg = $('impMsg'); clearMsg(msg);
+  const raw = $('impText').value.replace(/\r/g, '').trim();
+  if (!raw) return showMsg(msg, 'error', 'Paste your spreadsheet rows into the box first.');
+
+  // Sheets copies as tab-separated text; CSV also works.
+  const lines = raw.split('\n').filter(l => l.trim());
+  const split = (l) => (l.indexOf('\t') > -1 ? l.split('\t') : l.split(',')).map(c => c.trim().replace(/^"|"$/g, ''));
+  const first = split(lines[0]);
+  const mapped = first.map(mapHeader);
+  const hasHeader = mapped.filter(Boolean).length >= 2;
+  if (!hasHeader) return showMsg(msg, 'error', 'Could not find a header row. Include the row with column names such as Title and Publication id.');
+
+  const cols = {}; mapped.forEach((k, i) => { if (k && cols[k] === undefined) cols[k] = i; });
+  const get = (cells, key) => (cols[key] === undefined ? '' : String(cells[cols[key]] || '').trim());
+
+  importRows = [];
+  for (let i = 1; i < lines.length; i++) {
+    const c = split(lines[i]);
+    const title = get(c, 'title');
+    const pubId = get(c, 'pubId') || get(c, 'itemId');
+    if (!title && !pubId) continue;
+    const months = parseMonthsText(get(c, 'months'));
+    const totalRaw = get(c, 'total');
+    const langRaw = get(c, 'language').toLowerCase();
+    importRows.push({
+      title: titleCaseWords(title),
+      pubId,
+      edition: get(c, 'edition'),
+      imageLink: normalizeImageUrl(get(c, 'imageLink')),
+      series: get(c, 'series'),
+      language: (langRaw.startsWith('s') ? 'S' : 'E'),
+      totalInventory: (totalRaw === '' ? 4 : Math.max(0, Number(totalRaw) || 0)),
+      featuredStart: months.start,
+      featuredEnd: months.end,
+      isFbc: /free bible course/i.test(title)
+    });
+  }
+
+  if (!importRows.length) return showMsg(msg, 'error', 'No poster rows were found under the header.');
+
+  // Flag duplicates inside the paste itself, and against what is already stored.
+  const within = findDuplicates(importRows);
+  let dupNote = '';
+  if (within.length) {
+    dupNote = '<div class="reminder"><b>' + within.length + ' rows share a Publication ID</b> with another row in this paste. ' +
+              'Only the first of each will be shown to users, so remove the extras if they are not wanted.</div>';
+  }
+  $('impPreview').innerHTML = dupNote +
+    '<div class="psection-head">Ready to import \u2014 ' + importRows.length + ' poster' + (importRows.length === 1 ? '' : 's') + '</div>' +
+    importRows.slice(0, 40).map(r =>
+      '<div class="crow"><div class="top"><div><div class="cn">' + esc(r.title || '(untitled)') + '</div>' +
+      '<div class="cg">' + esc(r.pubId || 'no ID') + ' \u00b7 ' + (r.language === 'S' ? 'Spanish' : 'English') +
+      ' \u00b7 ' + r.totalInventory + ' copies</div></div>' +
+      (r.featuredStart ? '<span class="tag out">' + esc(fmtYM(r.featuredStart)) + '</span>' : '<span class="tag avail">Not scheduled</span>') +
+      '</div></div>').join('') +
+    (importRows.length > 40 ? '<p class="hint">Showing the first 40 of ' + importRows.length + '.</p>' : '') +
+    '<p class="hint">Check the details above. Importing adds these as new posters.</p>' +
+    '<button class="btn" onclick="runImport()">Import ' + importRows.length + ' poster' + (importRows.length === 1 ? '' : 's') + '</button>';
+}
+
+async function runImport() {
+  const msg = $('impMsg'); clearMsg(msg);
+  if (!importRows.length) return;
+  const box = $('impPreview');
+  box.innerHTML = '<p class="subtitle">Importing\u2026</p>';
+  let done = 0, failed = 0;
+  for (const r of importRows) {
+    try { await addDoc(collection(db, 'posters'), r); done++; }
+    catch (e) { failed++; }
+    box.innerHTML = '<p class="subtitle">Importing\u2026 ' + done + ' of ' + importRows.length + '</p>';
+  }
+  importRows = [];
+  $('impText').value = '';
+  box.innerHTML = '<button class="btn" onclick="openAdminPosters()">View the poster index</button>';
+  showMsg(msg, failed ? 'error' : 'success',
+    'Imported ' + done + ' poster' + (done === 1 ? '' : 's') + '.' +
+    (failed ? ' ' + failed + ' could not be saved \u2014 check that you are signed in as an administrator.' : ''));
+}
+
+
+/* ---------------- Admin: repair stored image links ---------------- */
+// Rewrites any Drive/Dropbox share links already saved in the database into
+// direct image URLs, so covers actually appear.
+async function fixImageLinks() {
+  const msg = $('admMsg'); clearMsg(msg);
+  try {
+    const posters = await allPosters();
+    let fixed = 0;
+    for (const p of posters) {
+      const cur = String(p.imageLink || '').trim();
+      if (!cur) continue;
+      const next = normalizeImageUrl(cur);
+      if (next && next !== cur) { await updateDoc(doc(db, 'posters', p.id), { imageLink: next }); fixed++; }
+    }
+    showMsg(msg, 'success', fixed
+      ? ('Updated ' + fixed + ' image link' + (fixed === 1 ? '' : 's') + '. Check the schedule again.')
+      : 'All image links are already in a direct format.');
+  } catch (e) { showMsg(msg, 'error', 'Could not update links: ' + (e.message || e)); }
+}
+
+/* ---------------- New-registration alerts (admins only) ---------------- */
+// Shows a banner on Home and a red count on the More tab the moment someone
+// new is waiting, so they can be approved quickly.
+async function refreshPendingBadge() {
+  const badge = $('moreBadge'), banner = $('approveBanner');
+  if (badge) badge.outerHTML = '<span id="moreBadge"></span>';
+  if (banner) banner.innerHTML = '';
+  if (!state.profile || !state.profile.admin) return;
+  try {
+    const snap = await getDocs(collection(db, 'users'));
+    let n = 0;
+    snap.forEach(d => { const u = d.data(); if (u && u.approved === false) n++; });
+    if (!n) return;
+    const b = $('moreBadge');
+    if (b) b.outerHTML = '<span class="navbadge" id="moreBadge">' + (n > 9 ? '9+' : n) + '</span>';
+    if (banner) {
+      banner.innerHTML =
+        '<div class="approve-banner" onclick="openAdminUsers()">' +
+          '<div class="ab-count">' + n + '</div>' +
+          '<div class="ab-text"><b>' + n + (n === 1 ? ' person is' : ' people are') + ' waiting for approval</b>' +
+          '<span>Tap to review and approve them.</span></div>' +
+        '</div>';
+    }
+  } catch (e) { /* only admins may read the list */ }
+}
+
+/* ---------------- Admin: people & administrators ---------------- */
+async function openAdminUsers() {
+  show('admin'); clearMsg($('admMsg'));
+  const body = $('admBody'); body.innerHTML = '<p class="subtitle">Loading\u2026</p>';
+  try {
+    const snap = await getDocs(collection(db, 'users'));
+    const list = [];
+    snap.forEach(d => list.push(Object.assign({ id: d.id }, d.data())));
+    list.sort((a, b) => (Number(b.approved === false) - Number(a.approved === false)) ||
+                        String(a.name || '').localeCompare(String(b.name || '')));
+    const waitingCount = list.filter(u => u.approved === false).length;
+    body.innerHTML =
+      '<button class="btn ghost" style="padding-left:0;" onclick="openAdmin()">\u2190 Admin menu</button>' +
+      (waitingCount ? '<div class="reminder"><b>' + waitingCount + ' waiting for approval.</b> They cannot check anything out until you approve them.</div>' : '') +
+      '<div class="psection-head first">People (' + list.length + ')</div>' +
+      '<input id="userSearch" type="search" placeholder="Search by name, email or congregation" ' +
+        'oninput="filterUsers()" style="margin-bottom:12px;">' +
+      '<div id="userList">' +
+      '<p class="hint" style="margin-top:0;">Administrators can manage carts, posters, settings and issue reports.</p>' +
+      (list.length ? list.map(u => {
+        const me = u.id === state.user.uid;
+        const waiting = u.approved === false;
+        const tag = waiting ? '<span class="tag over">Waiting for approval</span>'
+                  : u.admin ? '<span class="tag out">Administrator</span>'
+                  : (u.active === false ? '<span class="tag over">Inactive</span>' : '<span class="tag avail">Member</span>');
+        // Administrators see full contact details, not masked ones.
+        const details =
+          '<div class="meta">' +
+            '<div><span>Email</span><b>' + esc(u.email || '\u2014') + '</b></div>' +
+            '<div><span>Phone</span><b>' + esc(u.phone ? formatPhone(u.phone) : 'Not given') + '</b></div>' +
+            '<div><span>Congregation</span><b>' + esc(u.congregation || '\u2014') + '</b></div>' +
+            '<div><span>Joined</span><b>' + esc(u.createdAt ? fmtDate(u.createdAt) : '\u2014') + '</b></div>' +
+          '</div>';
+        return '<div class="crow"><div class="top"><div><div class="cn">' + esc(titleCaseName(u.name)) + (me ? ' (you)' : '') + '</div>' +
+          '<div class="cg">' + esc(u.congregation || '') + '</div></div>' + tag + '</div>' + details +
+          (waiting
+            ? '<div style="display:flex; gap:10px; margin-top:10px;">' +
+              '<button class="btn" style="margin:0;" onclick="approveUser(\'' + esc(u.id) + '\',true)">Approve</button>' +
+              '<button class="btn ghost" style="margin:0;" onclick="approveUser(\'' + esc(u.id) + '\',false)">Decline</button>' +
+              '</div>'
+            : (me ? '<p class="hint">You cannot change your own access here.</p>' :
+              '<div style="display:flex; gap:10px; margin-top:10px;">' +
+              '<button class="btn secondary" style="margin:0;" onclick="setUserAdmin(\'' + esc(u.id) + '\',' + (u.admin ? 'false' : 'true') + ')">' +
+                (u.admin ? 'Remove admin' : 'Make admin') + '</button>' +
+              '<button class="btn ghost" style="margin:0;" onclick="setUserActive(\'' + esc(u.id) + '\',' + (u.active === false ? 'true' : 'false') + ')">' +
+                (u.active === false ? 'Reactivate' : 'Deactivate') + '</button>' +
+              '</div>')) +
+          '</div>';
+      }).join('') : '<p class="subtitle">No one has signed in yet.</p>') + '</div>';
+  } catch (e) {
+    body.innerHTML = '<p class="subtitle">Could not load people. Only administrators may view this list.</p>';
+  }
+}
+// Simple client-side filter over the rendered rows.
+function filterUsers() {
+  const q = ($('userSearch').value || '').trim().toLowerCase();
+  const rows = document.querySelectorAll('#userList .crow');
+  rows.forEach(r => {
+    r.style.display = (!q || r.textContent.toLowerCase().indexOf(q) > -1) ? '' : 'none';
+  });
+}
+
+async function approveUser(uid, ok) {
+  if (!ok && !confirm('Decline this person? They will not be able to use the app.')) return;
+  try {
+    await updateDoc(doc(db, 'users', uid), { approved: !!ok, active: !!ok });
+    await refreshPendingBadge();
+    openAdminUsers();
+  } catch (e) { showMsg($('admMsg'), 'error', 'Could not update: ' + (e.message || e)); }
+}
+
+async function setUserAdmin(uid, makeAdmin) {
+  if (makeAdmin && !confirm('Give this person full administrator access?')) return;
+  try { await updateDoc(doc(db, 'users', uid), { admin: !!makeAdmin }); openAdminUsers(); }
+  catch (e) { showMsg($('admMsg'), 'error', 'Could not update: ' + (e.message || e)); }
+}
+async function setUserActive(uid, makeActive) {
+  if (!makeActive && !confirm('Deactivate this person? They will not be able to check out a cart.')) return;
+  try { await updateDoc(doc(db, 'users', uid), { active: !!makeActive }); openAdminUsers(); }
+  catch (e) { showMsg($('admMsg'), 'error', 'Could not update: ' + (e.message || e)); }
+}
+
+/* ---------------- expose for inline handlers ---------------- */
+Object.assign(window, {
+  show, requireLogin, toggleHomeStatus, loadHomeStatus,
+  goBack, signInGoogle, signInEmail, signUpEmail, resetPassword, saveProfile, doLogout,
+  setTheme, toggleMode, openSettings, navGo,
+  openCheckout, openReturn, openDashboard, loadDashboard,
+  openAdmin, saveSettings, addCarts,
+  openPosterView, openPosterCheckout, posterImgFail, schedImgFail,
+  openSchedule, loadSchedule, stepSchedule, printSchedule,
+  openIssues, submitIssue,
+  openAdminPosters, editPoster, savePoster, deletePoster,
+  openAdminIssues, resolveIssue,
+  openImport, previewImport, runImport,
+  openAdminUsers, setUserAdmin, setUserActive, fixImageLinks,
+  approveUser, recheckApproval, refreshPendingBadge, filterUsers
+});
+
+/* ---------------- start ---------------- */
+// Let the phone's own Back gesture/button move back through the app.
+window.addEventListener('popstate', () => { if (navStack.length) goBack(); });
+try { history.replaceState({ app: true }, ''); } catch (e) {}
+
+(async function start() {
+  const btn = $('modeBtn'); if (btn) btn.innerHTML = isDark() ? '&#9788;' : '&#9789;';
+  await loadConfig();
+  show('home');
+})();
+</script>
+  <div id="printSheet" class="print-sheet" aria-hidden="true"></div>
+
+  <nav class="bottomnav">
+    <div class="bottomnav-inner">
+      <button class="navbtn" id="nav-home" onclick="navGo('home')">
+        <svg viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5"/><path d="M5.5 9.5V21h13V9.5"/></svg>Home</button>
+      <button class="navbtn" id="nav-checkout" onclick="navGo('checkout')">
+        <svg viewBox="0 0 24 24" stroke-width="1.7"><g transform="rotate(-8 12 12)"><rect x="9.4" y="2.8" width="8.4" height="6.6" rx="1"/><rect x="9.4" y="10.6" width="8.4" height="2.7" rx="0.9"/><rect x="9.4" y="14.4" width="8.4" height="2.7" rx="0.9"/><path d="M7.5 3.4V18"/><path d="M7.5 18.3h8.9"/></g><circle cx="8.6" cy="20.6" r="1.8"/><circle cx="16.7" cy="20.8" r="0.95"/></svg>Cart</button>
+      <button class="navbtn" id="nav-posters" onclick="navGo('posters')">
+        <svg viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>Posters</button>
+      <button class="navbtn" id="nav-schedule" onclick="navGo('schedule')">
+        <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>Schedule</button>
+      <button class="navbtn" id="nav-more" onclick="navGo('more')"><span id="moreBadge"></span>
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg>More</button>
+    </div>
+  </nav>
+</body>
+</html>

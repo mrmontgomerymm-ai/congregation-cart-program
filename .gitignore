@@ -1,0 +1,17 @@
+# Firebase + Node working files — never commit these
+node_modules/
+.firebase/
+firebase-debug.log*
+firestore-debug.log*
+ui-debug.log*
+
+# Credentials must never be committed
+service-account.json
+*-service-account*.json
+serviceAccountKey.json
+.env
+.env.*
+
+# OS clutter
+.DS_Store
+Thumbs.db

@@ -1,0 +1,39 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "transactions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "checkoutAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "transactions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "checkoutAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "posterCheckouts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "carts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "congregation", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "cartNumber", "order": "ASCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}
