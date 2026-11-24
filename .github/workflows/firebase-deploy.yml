@@ -56,6 +56,15 @@ jobs:
           fi
           exit $fail
 
+      # Stamps this build's id into the page and a tiny version file beside it.
+      # The running app polls that file and offers a refresh when they differ.
+      - name: Stamp the build version
+        run: |
+          VER="${GITHUB_SHA::7}-$(date -u +%Y%m%d%H%M)"
+          echo "Build version: $VER"
+          printf '{"version":"%s"}\n' "$VER" > public/version.json
+          sed -i "s|__BUILD_VERSION__|$VER|g" public/index.html
+
       - name: Deploy hosting and security rules
         env:
           SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}

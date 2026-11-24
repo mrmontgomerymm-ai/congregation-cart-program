@@ -286,6 +286,20 @@
     .sched-empty{color:var(--text-2); font-weight:600;}
 
     /* ---------- theme picker ---------- */
+    .updatebar{position:fixed; left:12px; right:12px; z-index:60; display:flex; align-items:center; gap:12px;
+      bottom:calc(var(--nav-h) + env(safe-area-inset-bottom) + 12px);
+      max-width:536px; margin:0 auto; padding:13px 14px; border-radius:15px;
+      background:var(--chrome); color:#fff; box-shadow:var(--shadow-lg); font-size:15px; font-weight:600;}
+    .updatebar span{flex:1 1 auto; line-height:1.3;}
+    .updatebar button{flex:0 0 auto; border:none; cursor:pointer; font:inherit; font-weight:800;
+      background:var(--accent); color:#fff; padding:10px 15px; border-radius:11px;}
+    .updatebar button.later{background:transparent; color:#aab4c4; font-size:22px; padding:4px 8px; line-height:1;}
+    @media print{ .updatebar{display:none !important;} }
+    .monthrow{display:flex; gap:10px; align-items:stretch;}
+    .monthrow input{flex:1 1 auto; min-width:0;}
+    .monthclear{flex:0 0 auto; width:auto; margin:0; padding:0 16px; border:2px solid var(--border);
+      border-radius:13px; font-weight:700; color:var(--text-2);}
+    .monthclear:hover{border-color:var(--accent); color:var(--accent);}
     .swatches{display:flex; gap:12px; flex-wrap:wrap; margin-top:10px;}
     .swatch{width:52px; height:52px; border-radius:14px; border:3px solid transparent; cursor:pointer;
       box-shadow:var(--shadow); position:relative;}
@@ -1858,13 +1872,27 @@ async function editPoster(id) {
     '<label for="peTotal">Total inventory (physical copies)</label>' +
     '<input id="peTotal" type="number" min="0" max="99" value="' + esc(String(p.totalInventory == null ? 4 : p.totalInventory)) + '">' +
     '<label for="peStart">Featured from <span class="hint" style="display:inline">(leave blank if not scheduled)</span></label>' +
-    '<input id="peStart" type="month" value="' + esc(p.featuredStart || '') + '">' +
-    '<label for="peEnd">Featured through</label><input id="peEnd" type="month" value="' + esc(p.featuredEnd || '') + '">' +
+    '<div class="monthrow"><input id="peStart" type="month" value="' + esc(p.featuredStart || '') + '">' +
+      '<button type="button" class="btn ghost monthclear" onclick="clearMonth(\'peStart\')">Clear</button></div>' +
+    '<label for="peEnd">Featured through</label>' +
+    '<div class="monthrow"><input id="peEnd" type="month" value="' + esc(p.featuredEnd || '') + '">' +
+      '<button type="button" class="btn ghost monthclear" onclick="clearMonth(\'peEnd\')">Clear</button></div>' +
+    '<button type="button" class="btn secondary" style="margin-top:10px;" onclick="clearMonth(\'peStart\');clearMonth(\'peEnd\');">' +
+      'Remove from the featured schedule</button>' +
     '<label style="margin-top:16px;"><input id="peFbc" type="checkbox" style="width:auto; margin-right:8px;"' +
       (p.isFbc ? ' checked' : '') + '> Free Bible Course poster (always available)</label>' +
     '<button class="btn" style="margin-top:16px;" onclick="savePoster()">Save poster</button>' +
     (id ? '<button class="btn danger" onclick="deletePoster()">Delete poster</button>' : '');
 }
+// Empties a month field. A phone's month picker often has no way to clear
+// itself once set, which left a poster stuck on the featured schedule.
+function clearMonth(id) {
+  const el = $(id);
+  if (!el) return;
+  el.value = '';
+  try { el.dispatchEvent(new Event('change', { bubbles: true })); } catch (e) {}
+}
+
 async function savePoster() {
   const msg = $('peMsg'); clearMsg(msg);
   const title = $('peTitleIn').value.trim();
@@ -1877,7 +1905,7 @@ async function savePoster() {
     imageLink: normalizeImageUrl($('peImg').value.trim()), language: $('peLang').value,
     series: $('peSeries').value, tag: titleCaseWords($('peTag').value.trim()),
     totalInventory: Math.max(0, Number($('peTotal').value) || 0),
-    featuredStart: start || '', featuredEnd: end || start || '', isFbc: $('peFbc').checked
+    featuredStart: start || '', featuredEnd: start ? (end || start) : '', isFbc: $('peFbc').checked
   };
   try {
     if (editingPoster) await setDoc(doc(db, 'posters', editingPoster), data, { merge: true });
@@ -2064,7 +2092,7 @@ function previewImport() {
       totalInventory: (totalRaw === '' ? 4 : Math.max(0, Number(totalRaw) || 0)),
       featuredStart: months.start,
       featuredEnd: months.end,
-      isFbc: /free bible course/i.test(title)
+      isFbc: /free bible course/i.test(title) && !/\b(alt|alternate|alternative|second|2nd|other)\b/i.test(title)
     });
   }
 
@@ -2269,6 +2297,26 @@ async function openAdminHealth() {
       });
     });
 
+    // An alternate Bible Course poster wrongly flagged as THE Free Bible Course
+    // is held out of the rotation; the real one left unflagged fills every slot.
+    posters.filter(p => p.isFbc && /\b(alt|alternate|alternative|second|2nd|other)\b/i.test(String(p.title || ''))).forEach(p => {
+      f.push({
+        kind: 'altFlagged', id: p.id, severity: 'high',
+        what: '"' + p.title + '" is flagged as the Free Bible Course poster.',
+        why: 'It looks like an alternate, so flagging it keeps it out of the featured rotation.',
+        fix: 'Treat it as a normal poster', apply: { isFbc: false }
+      });
+    });
+    posters.filter(p => !p.isFbc && /free bible course/i.test(String(p.title || '')) &&
+                        !/\b(alt|alternate|alternative|second|2nd|other)\b/i.test(String(p.title || ''))).forEach(p => {
+      f.push({
+        kind: 'fbcUnflagged', id: p.id, severity: 'medium',
+        what: '"' + p.title + '" is not flagged as the Free Bible Course poster.',
+        why: 'Unflagged, it competes for featured schedule slots instead of staying on the cart.',
+        fix: 'Flag it as Free Bible Course', apply: { isFbc: true, featuredStart: '', featuredEnd: '' }
+      });
+    });
+
     // Same Publication ID entered twice.
     findDuplicates(posters).forEach(p => {
       f.push({
@@ -2418,6 +2466,46 @@ async function fixAllHealth() {
   openAdminHealth();
 }
 
+/* ---------------- new version available ---------------- */
+// The deploy stamps a build id into this page and into version.json beside it.
+// When those differ a newer build is live, so the app offers a refresh rather
+// than leaving someone on a stale copy.
+const BUILD_VERSION = '__BUILD_VERSION__';
+let updateReady = false;
+
+async function checkForUpdate() {
+  if (updateReady) return;
+  if (BUILD_VERSION.indexOf('__BUILD') === 0 || BUILD_VERSION === 'dev') return;  // local copy
+  try {
+    const res = await fetch('version.json?t=' + Date.now(), { cache: 'no-store' });
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data && data.version && data.version !== BUILD_VERSION) {
+      updateReady = true;
+      const bar = $('updateBar');
+      if (bar && sessionStorage.getItem('dismissedUpdate') !== data.version) {
+        bar.dataset.version = data.version;
+        bar.hidden = false;
+      }
+    }
+  } catch (e) { /* offline or blocked — try again later */ }
+}
+
+function applyUpdate() { location.reload(true); }
+
+function dismissUpdate() {
+  const bar = $('updateBar');
+  if (!bar) return;
+  try { sessionStorage.setItem('dismissedUpdate', bar.dataset.version || '1'); } catch (e) {}
+  bar.hidden = true;
+}
+
+// Check shortly after opening, every 30 minutes, and whenever the app is
+// brought back to the foreground.
+setTimeout(checkForUpdate, 8000);
+setInterval(checkForUpdate, 30 * 60 * 1000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) checkForUpdate(); });
+
 /* ---------------- expose for inline handlers ---------------- */
 Object.assign(window, {
   show, requireLogin, toggleHomeStatus, loadHomeStatus,
@@ -2432,7 +2520,8 @@ Object.assign(window, {
   openAdminIssues, resolveIssue,
   openImport, previewImport, runImport,
   openAdminUsers, setUserAdmin, setUserActive, fixImageLinks,
-  openAdminHealth, fixHealth, fixAllHealth,
+  openAdminHealth, fixHealth, fixAllHealth, clearMonth,
+  applyUpdate, dismissUpdate,
   approveUser, recheckApproval, refreshPendingBadge, filterUsers
 });
 
@@ -2447,6 +2536,12 @@ try { history.replaceState({ app: true }, ''); } catch (e) {}
   show('home');
 })();
 </script>
+  <div id="updateBar" class="updatebar" hidden>
+    <span>A new version is available.</span>
+    <button type="button" onclick="applyUpdate()">Update now</button>
+    <button type="button" class="later" onclick="dismissUpdate()" aria-label="Later">&times;</button>
+  </div>
+
   <div id="printSheet" class="print-sheet" aria-hidden="true"></div>
 
   <nav class="bottomnav">
