@@ -275,7 +275,14 @@
     .yearlabel b{display:block; font-size:19px; font-weight:800;}
     .yearlabel span{display:block; font-size:14px; color:var(--text-2);}
     .sched-ph{color:var(--text-2); font-size:14px; text-align:center;}
-    .sched-cap{padding:10px 12px 14px; text-align:center; font-weight:700; font-size:14px; line-height:1.4;}
+    /* Fixed caption block: the title is clamped to two lines and the reference
+       sits on its own line, so all six cells line up however long a title is. */
+    .sched-cap{padding:10px 10px 13px; text-align:center; min-height:76px;
+      display:flex; flex-direction:column; align-items:center; justify-content:flex-start; gap:3px;}
+    .sc-title{font-weight:700; font-size:14px; line-height:1.3; overflow:hidden;
+      display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;
+      overflow-wrap:anywhere; hyphens:auto;}
+    .sc-ref{font-size:12.5px; font-weight:600; color:var(--text-2); line-height:1.25; overflow-wrap:anywhere;}
     .sched-empty{color:var(--text-2); font-weight:600;}
 
     /* ---------- theme picker ---------- */
@@ -354,8 +361,9 @@
       .ps-img{ flex:1 1 auto; min-height:0; display:flex; align-items:center; justify-content:center; padding:4px; }
       .ps-img img{ max-width:100%; max-height:100%; width:auto; height:100%; object-fit:contain; }
       .ps-ph{ color:#666; font-size:10px; }
-      .ps-cap{ flex:0 0 auto; text-align:center; font-weight:700; font-size:9.5px;
-        line-height:1.25; padding:3px 5px 5px; }
+      .ps-cap{ flex:0 0 auto; text-align:center; padding:3px 5px 5px; min-height:0; }
+      .ps-cap .sc-title{ font-weight:700; font-size:9.5px; line-height:1.2; -webkit-line-clamp:2; }
+      .ps-cap .sc-ref{ font-size:8.5px; font-weight:600; color:#444; line-height:1.2; }
       .ps-ftr{ flex:0 0 auto; text-align:center; font-size:9.5px; color:#333;
         padding-top:4px; border-top:1px solid #999; margin-top:6px; }
     }
@@ -1055,7 +1063,7 @@ async function pickCartPoster() {
                   : '<div class="pmeta"><b>' + iv.available + ' available</b></div>');
       return '<div class="pcard' + (off ? ' pcard-off' : '') + '" data-id="' + esc(p.id) + '" data-off="' + (off ? '1' : '0') + '">' +
              badge + posterImgHTML(p) + '<div class="ptitle">' + esc(p.title || '(untitled)') + '</div>' +
-             (p.pubId ? '<div class="pmeta">' + esc(p.pubId) + '</div>' : '') + avail + '</div>';
+             (posterRefLine(p) ? '<div class="pmeta">' + esc(posterRefLine(p)) + '</div>' : '') + avail + '</div>';
     });
   body.querySelectorAll('.pcard').forEach(card => {
     card.onclick = () => {
@@ -1254,6 +1262,7 @@ async function openAdmin() {
     '<div class="psection-head">Posters &amp; reports</div>' +
     '<button class="btn" onclick="openAdminPosters()">Manage posters &amp; inventory</button>' +
     '<button class="btn secondary" onclick="openImport()">Import posters from a spreadsheet</button>' +
+    '<button class="btn" onclick="openAdminHealth()">Check data &amp; fix problems</button>' +
     '<button class="btn secondary" onclick="fixImageLinks()">Repair poster image links</button>' +
     '<button class="btn secondary" onclick="openAdminIssues()">View reported issues</button>' +
     '<div class="psection-head">People</div>' +
@@ -1503,7 +1512,7 @@ async function openPosterView() {
                   : '<div class="pmeta"><b>' + iv.available + ' available</b> of ' + iv.total + '</div>');
       return '<div class="pcard' + (iv.unavailable ? ' out' : '') + '">' + badge + right + posterImgHTML(p) +
              '<div class="ptitle">' + esc(p.title || '(untitled)') + '</div>' +
-             (p.pubId ? '<div class="pmeta">' + esc(p.pubId) + '</div>' : '') + avail +
+             (posterRefLine(p) ? '<div class="pmeta">' + esc(posterRefLine(p)) + '</div>' : '') + avail +
              (p.featuredStart ? '<div class="pmeta">' + esc(fmtYM(p.featuredStart)) +
                 (p.featuredEnd && p.featuredEnd !== p.featuredStart ? ' \u2013 ' + esc(fmtYM(p.featuredEnd)) : '') + '</div>' : '') +
              '<div class="plang">' + (p.language === 'S' ? 'Spanish' : 'English') + '</div>' +
@@ -1549,7 +1558,7 @@ async function openPosterCheckout() {
                     : '<div class="pmeta"><b>' + iv.available + ' available</b></div>');
         return '<div class="pcard' + (off ? ' pcard-off' : '') + '" data-id="' + esc(p.id) + '" data-off="' + (off ? '1' : '0') + '">' +
                badge + posterImgHTML(p) + '<div class="ptitle">' + esc(p.title || '(untitled)') + '</div>' +
-               (p.pubId ? '<div class="pmeta">' + esc(p.pubId) + '</div>' : '') + avail + '</div>';
+               (posterRefLine(p) ? '<div class="pmeta">' + esc(posterRefLine(p)) + '</div>' : '') + avail + '</div>';
       });
     body.querySelectorAll('.pcard').forEach(card => {
       card.onclick = () => {
@@ -1630,13 +1639,30 @@ async function loadSchedule(offset) {
       { period: 'May/Jun ' + endYear,   months: [ym(endYear, 5), ym(endYear, 6)] },
       { period: 'Jul/Aug ' + endYear,   months: [ym(endYear, 7), ym(endYear, 8)] }
     ];
+    // The Free Bible Course poster is the mandatory cart poster, not part of the
+    // featured rotation, so it never occupies a schedule slot. Everything else is
+    // matched deterministically: a poster whose run STARTS in this slot wins over
+    // one merely passing through it, then earliest start, then index order. That
+    // keeps this grid in the same order the admin poster list shows.
+    const schedulable = dedupePosters(posters).filter(p => !p.isFbc && parseYM(p.featuredStart));
+    const used = {};
     const cells = slots.map(s => {
-      const hit = posters.find(p => {
-        const a = parseYM(p.featuredStart); if (!a) return false;
+      const candidates = schedulable.filter(p => {
+        if (used[p.id]) return false;
+        const a = parseYM(p.featuredStart);
         const b = parseYM(p.featuredEnd) || a;
         return s.months.some(v => v >= a.v && v <= b.v);
       });
-      return { period: s.period, poster: hit || null };
+      candidates.sort((x, y) => {
+        const xs = parseYM(x.featuredStart).v, ys = parseYM(y.featuredStart).v;
+        const xIn = s.months.indexOf(xs) > -1, yIn = s.months.indexOf(ys) > -1;
+        if (xIn !== yIn) return xIn ? -1 : 1;      // starts here beats passes through
+        if (xs !== ys) return xs - ys;             // then the earlier start
+        return String(x.title || '').localeCompare(String(y.title || ''));
+      });
+      const hit = candidates[0] || null;
+      if (hit) used[hit.id] = true;                // one poster cannot fill two slots
+      return { period: s.period, poster: hit };
     });
     schData = { serviceYear: endYear, startYear, cells };
 
@@ -1665,7 +1691,7 @@ async function loadSchedule(offset) {
       '<div class="sched-grid">' + cells.map(c =>
         '<div class="sched-cell"><div class="sched-period">' + esc(c.period) + '</div>' +
         '<div class="sched-img">' + (c.poster ? schedImg(c.poster) : '<div class="sched-ph">Not yet assigned</div>') + '</div>' +
-        '<div class="sched-cap">' + (c.poster ? esc(schedCaption(c.poster)) : '<span class="sched-empty">Not yet assigned</span>') + '</div></div>'
+        '<div class="sched-cap">' + (c.poster ? schedCaptionHTML(c.poster) : '<span class="sched-empty">Not yet assigned</span>') + '</div></div>'
       ).join('') + '</div>';
   } catch (e) { body.innerHTML = '<p class="subtitle">Could not load the schedule.</p>'; }
 }
@@ -1678,12 +1704,29 @@ function schedImg(p, forPrint) {
          (forPrint ? '' : ' onerror="schedImgFail(this)"') + '>';
 }
 function schedImgFail(img) { img.parentNode.innerHTML = '<div class="sched-ph">Image unavailable</div>'; }
+// A poster's reference line. Edition and Publication ID are optional — special
+// request items often have neither — so the pieces are joined only when present
+// and no stray separators are left behind.
+function posterRefLine(p) {
+  const bits = [];
+  if (p.edition) bits.push(p.edition);
+  if (p.pubId) bits.push(p.pubId);
+  if (!bits.length && p.tag) bits.push(p.tag);
+  return bits.join('  \u00b7  ');
+}
+
+// Plain one-line caption, used for the printed sheet and anywhere text-only.
 function schedCaption(p) {
-  let cap = '';
-  if (p.edition) cap += p.edition + ' | ';
-  cap += (p.title || '');
-  if (p.pubId) cap += ' - ' + p.pubId;
-  return cap;
+  const ref = posterRefLine(p);
+  return (p.title || '(untitled)') + (ref ? ' \u2014 ' + ref : '');
+}
+
+// Screen caption: the title gets its own clamped block and the reference its
+// own line, so every cell wraps to the same shape no matter the title length.
+function schedCaptionHTML(p) {
+  const ref = posterRefLine(p);
+  return '<div class="sc-title">' + esc(p.title || '(untitled)') + '</div>' +
+         (ref ? '<div class="sc-ref">' + esc(ref) + '</div>' : '');
 }
 function printSchedule() {
   if (!schData) { showMsg($('schMsg'), 'error', 'Please wait for the schedule to load, then tap Print.'); return; }
@@ -1693,7 +1736,7 @@ function printSchedule() {
   const cells = schData.cells.map(c =>
     '<div class="ps-cell"><div class="ps-per">' + esc(c.period) + '</div>' +
     '<div class="ps-img">' + (c.poster ? schedImg(c.poster) : '<div class="ps-ph">Not yet assigned</div>') + '</div>' +
-    '<div class="ps-cap">' + (c.poster ? esc(schedCaption(c.poster)) : 'Not yet assigned') + '</div></div>').join('');
+    '<div class="ps-cap">' + (c.poster ? schedCaptionHTML(c.poster) : 'Not yet assigned') + '</div></div>').join('');
 
   $('printSheet').innerHTML =
     '<div class="ps-sheet">' +
@@ -1775,7 +1818,7 @@ async function openAdminPosters() {
                 : (iv.unavailable ? '<span class="tag over">0 left</span>'
                 : '<span class="tag avail">' + iv.available + ' of ' + iv.total + '</span>'));
       return '<div class="crow"><div class="top"><div><div class="cn">' + esc(p.title || '(untitled)') + '</div>' +
-             '<div class="cg">' + esc(p.pubId || '') + ' \u00b7 ' + (p.language === 'S' ? 'Spanish' : 'English') + '</div></div>' + tag + '</div>' +
+             '<div class="cg">' + esc(posterRefLine(p) || 'No ID') + ' \u00b7 ' + (p.language === 'S' ? 'Spanish' : 'English') + '</div></div>' + tag + '</div>' +
              '<div class="meta"><div><span>Featured</span><b>' +
              (p.featuredStart ? esc(fmtYM(p.featuredStart) + (p.featuredEnd && p.featuredEnd !== p.featuredStart ? ' \u2013 ' + fmtYM(p.featuredEnd) : '')) : '\u2014') +
              '</b></div></div>' +
@@ -1787,7 +1830,7 @@ let editingPoster = null;
 async function editPoster(id) {
   show('posteredit'); clearMsg($('peMsg'));
   let p = { title:'', pubId:'', edition:'', imageLink:'', language:'E', series:'',
-            totalInventory:4, featuredStart:'', featuredEnd:'', isFbc:false };
+            tag:'', totalInventory:4, featuredStart:'', featuredEnd:'', isFbc:false };
   if (id) {
     const snap = await getDoc(doc(db, 'posters', id));
     if (snap.exists()) p = Object.assign(p, snap.data());
@@ -1796,10 +1839,12 @@ async function editPoster(id) {
   $('peTitle').textContent = id ? 'Edit poster' : 'Add a poster';
   $('peBody').innerHTML =
     '<label for="peTitleIn">Title</label><input id="peTitleIn" type="text" maxlength="120" value="' + esc(p.title) + '">' +
-    '<label for="pePub">Publication ID <span class="hint" style="display:inline">(w&hellip; = Watchtower, g&hellip; = Awake)</span></label>' +
+    '<label for="pePub">Publication ID <span class="hint" style="display:inline">(optional &mdash; w&hellip; = Watchtower, g&hellip; = Awake)</span></label>' +
     '<input id="pePub" type="text" maxlength="40" value="' + esc(p.pubId) + '" placeholder="wp25.1">' +
-    '<label for="peEdition">Edition <span class="hint" style="display:inline">(shown on the printed schedule)</span></label>' +
+    '<label for="peEdition">Edition <span class="hint" style="display:inline">(optional)</span></label>' +
     '<input id="peEdition" type="text" maxlength="40" value="' + esc(p.edition || '') + '" placeholder="No. 1 2025">' +
+    '<label for="peTag">Short label <span class="hint" style="display:inline">(optional &mdash; for items with no ID, e.g. &ldquo;Convention&rdquo;)</span></label>' +
+    '<input id="peTag" type="text" maxlength="28" value="' + esc(p.tag || '') + '" placeholder="Special request">' +
     '<label for="peImg">Image link <span class="hint" style="display:inline">(or type TBA)</span></label>' +
     '<input id="peImg" type="text" maxlength="500" value="' + esc(p.imageLink) + '">' +
     '<label for="peLang">Language</label><select id="peLang">' +
@@ -1830,7 +1875,8 @@ async function savePoster() {
   const data = {
     title: titleCaseWords(title), pubId: $('pePub').value.trim(), edition: $('peEdition').value.trim(),
     imageLink: normalizeImageUrl($('peImg').value.trim()), language: $('peLang').value,
-    series: $('peSeries').value, totalInventory: Math.max(0, Number($('peTotal').value) || 0),
+    series: $('peSeries').value, tag: titleCaseWords($('peTag').value.trim()),
+    totalInventory: Math.max(0, Number($('peTotal').value) || 0),
     featuredStart: start || '', featuredEnd: end || start || '', isFbc: $('peFbc').checked
   };
   try {
@@ -1953,6 +1999,7 @@ function mapHeader(name) {
   if (n.includes('featuredmonth') || n.includes('month') || n.includes('displayed')) return 'months';
   if (n.includes('inventory') || n.includes('total') || n.includes('copies') || n.includes('qty') || n.includes('quantity')) return 'total';
   if (n.includes('language') || n === 'lang') return 'language';
+  if (n.includes('tag') || n.includes('label') || n.includes('note')) return 'tag';
   if (n === 'id' || n.includes('itemid')) return 'itemId';
   return null;
 }
@@ -2012,7 +2059,7 @@ function previewImport() {
       pubId,
       edition: get(c, 'edition'),
       imageLink: normalizeImageUrl(get(c, 'imageLink')),
-      series: get(c, 'series'),
+      series: get(c, 'series'), tag: titleCaseWords(get(c, 'tag')),
       language: (langRaw.startsWith('s') ? 'S' : 'E'),
       totalInventory: (totalRaw === '' ? 4 : Math.max(0, Number(totalRaw) || 0)),
       featuredStart: months.start,
@@ -2191,6 +2238,186 @@ async function setUserActive(uid, makeActive) {
   catch (e) { showMsg($('admMsg'), 'error', 'Could not update: ' + (e.message || e)); }
 }
 
+
+/* ---------------- Admin: data health check & cleanup ---------------- */
+// Looks for the things that quietly break the schedule or the poster lists,
+// and offers a one-tap fix for each. Nothing is changed without a tap.
+let healthFindings = [];
+
+async function openAdminHealth() {
+  show('admin'); clearMsg($('admMsg'));
+  const body = $('admBody');
+  body.innerHTML = '<p class="subtitle">Checking your data…</p>';
+  try {
+    const [posters, carts] = await Promise.all([allPosters(), allCarts()]);
+    let pcs = [];
+    try {
+      const snap = await getDocs(collection(db, 'posterCheckouts'));
+      snap.forEach(d => pcs.push(Object.assign({ id: d.id }, d.data())));
+    } catch (e) {}
+
+    const f = [];
+    const posterIds = {}; posters.forEach(p => { posterIds[p.id] = true; });
+
+    // A featured Free Bible Course poster steals a slot from the real rotation.
+    posters.filter(p => p.isFbc && p.featuredStart).forEach(p => {
+      f.push({
+        kind: 'fbcFeatured', id: p.id, severity: 'high',
+        what: '"' + (p.title || 'Free Bible Course') + '" is marked Free Bible Course but also has featured months.',
+        why: 'It takes a slot on the schedule that belongs to the rotating publication.',
+        fix: 'Clear its featured months', apply: { featuredStart: '', featuredEnd: '' }
+      });
+    });
+
+    // Same Publication ID entered twice.
+    findDuplicates(posters).forEach(p => {
+      f.push({
+        kind: 'duplicate', id: p.id, severity: 'high',
+        what: '"' + (p.title || '(untitled)') + '" shares the ID ' + p.pubId + ' with another poster.',
+        why: 'Only the first of each ID is shown, so the other is invisible to everyone.',
+        fix: 'Delete this one', apply: null, del: true
+      });
+    });
+
+    posters.forEach(p => {
+      const a = parseYM(p.featuredStart), b = parseYM(p.featuredEnd);
+      if (!String(p.title || '').trim()) {
+        f.push({ kind: 'noTitle', id: p.id, severity: 'high',
+          what: 'A poster has no title' + (p.pubId ? ' (ID ' + p.pubId + ')' : '') + '.',
+          why: 'It shows as "(untitled)" wherever it appears.',
+          fix: 'Open to edit', edit: true });
+      }
+      if (p.featuredStart && !a) {
+        f.push({ kind: 'badStart', id: p.id, severity: 'high',
+          what: '"' + (p.title || '(untitled)') + '" has an unreadable start month.',
+          why: 'It can never match a schedule slot.',
+          fix: 'Clear the featured months', apply: { featuredStart: '', featuredEnd: '' } });
+      }
+      if (a && b && b.v < a.v) {
+        f.push({ kind: 'backwards', id: p.id, severity: 'high',
+          what: '"' + (p.title || '(untitled)') + '" ends before it starts.',
+          why: 'A backwards range never matches a slot.',
+          fix: 'Make it a single month', apply: { featuredEnd: p.featuredStart } });
+      }
+      if (!p.isFbc && (!isFinite(Number(p.totalInventory)) || Number(p.totalInventory) < 0)) {
+        f.push({ kind: 'badInv', id: p.id, severity: 'high',
+          what: '"' + (p.title || '(untitled)') + '" has no usable inventory count.',
+          why: 'It shows "Inventory information unavailable" instead of a number.',
+          fix: 'Set it to 4 copies', apply: { totalInventory: 4 } });
+      }
+      const link = String(p.imageLink || '').trim();
+      if (link && link.toLowerCase() !== 'tba' && link.toLowerCase() !== 'tbd') {
+        const norm = normalizeImageUrl(link);
+        if (norm && norm !== link) {
+          f.push({ kind: 'shareLink', id: p.id, severity: 'medium',
+            what: '"' + (p.title || '(untitled)') + '" uses a share link for its image.',
+            why: 'Share links point at a viewer page, so the cover will not display.',
+            fix: 'Convert to a direct link', apply: { imageLink: norm } });
+        }
+      }
+      if (!p.isFbc && !link) {
+        f.push({ kind: 'noImage', id: p.id, severity: 'low',
+          what: '"' + (p.title || '(untitled)') + '" has no image link.',
+          why: 'Its cell shows "Image coming soon".',
+          fix: 'Open to add one', edit: true });
+      }
+      if (!p.isFbc && !String(p.pubId || '').trim() && !String(p.tag || '').trim()) {
+        f.push({ kind: 'noRef', id: p.id, severity: 'low',
+          what: '"' + (p.title || '(untitled)') + '" has no ID and no short label.',
+          why: 'It is grouped under Special Request with nothing to identify it by.',
+          fix: 'Label it "Special Request"', apply: { tag: 'Special Request' } });
+      }
+    });
+
+    // A poster checked out but since deleted leaves a copy permanently "out".
+    pcs.filter(c => c.status === 'Checked Out' && c.posterKey && !posterIds[c.posterKey]).forEach(c => {
+      f.push({ kind: 'orphanCheckout', id: c.id, coll: 'posterCheckouts', severity: 'high',
+        what: 'A checkout refers to a poster that no longer exists ("' + (c.posterTitle || 'unknown') + '").',
+        why: 'That copy counts as out forever, so availability reads low.',
+        fix: 'Close this checkout', apply: { status: 'Returned', returnAt: 'NOW' } });
+    });
+
+    // A cart marked out with nobody holding it.
+    carts.filter(c => c.status !== 'Available' && !c.currentUserId).forEach(c => {
+      f.push({ kind: 'orphanCart', id: c.id, coll: 'carts', severity: 'high',
+        what: 'Cart ' + c.number + ' (' + c.congregation + ') is checked out to nobody.',
+        why: 'It can never be returned, so it stays unavailable.',
+        fix: 'Make it available', apply: { status: 'Available', currentUserId: null, checkoutAt: null } });
+    });
+
+    healthFindings = f;
+    renderHealth(posters.length, carts.length);
+  } catch (e) {
+    body.innerHTML = '<p class="subtitle">Could not run the check: ' + esc(e.message || e) + '</p>';
+  }
+}
+
+function renderHealth(nPosters, nCarts) {
+  const body = $('admBody');
+  const rank = { high: 0, medium: 1, low: 2 };
+  const f = healthFindings.slice().sort((a, b) => rank[a.severity] - rank[b.severity]);
+  const high = f.filter(x => x.severity === 'high').length;
+
+  let html = '<button class="btn ghost" style="padding-left:0;" onclick="openAdmin()">← Admin menu</button>' +
+    '<div class="psection-head first">Data check</div>';
+
+  if (!f.length) {
+    html += '<div class="guide-intro"><b>Everything looks healthy.</b><br>' +
+      nPosters + ' posters and ' + nCarts + ' carts checked, with nothing to fix.</div>';
+  } else {
+    html += '<div class="' + (high ? 'reminder' : 'guide-intro') + '"><b>' + f.length +
+      ' thing' + (f.length === 1 ? '' : 's') + ' to look at</b>' +
+      (high ? '<br>' + high + ' affect what people see right now.' : '<br>None are urgent.') + '</div>' +
+      (f.filter(x => x.apply).length > 1
+        ? '<button class="btn" onclick="fixAllHealth()">Fix everything that can be fixed automatically</button>' : '');
+
+    html += f.map((x, i) => {
+      const tag = x.severity === 'high' ? '<span class="tag over">Needs attention</span>'
+                : x.severity === 'medium' ? '<span class="tag out">Worth fixing</span>'
+                : '<span class="tag avail">Minor</span>';
+      const btn = x.edit
+        ? '<button class="btn secondary" style="margin:10px 0 0;" onclick="editPoster(\'' + esc(x.id) + '\')">' + esc(x.fix) + '</button>'
+        : '<button class="btn secondary" style="margin:10px 0 0;" onclick="fixHealth(' + i + ')">' + esc(x.fix) + '</button>';
+      return '<div class="crow"><div class="top"><div class="cn" style="font-size:15px;">' + esc(x.what) + '</div>' + tag + '</div>' +
+             '<p class="hint" style="margin-top:6px;">' + esc(x.why) + '</p>' + btn + '</div>';
+    }).join('');
+  }
+  body.innerHTML = html;
+}
+
+async function applyHealthFix_(x) {
+  if (x.del) { await deleteDoc(doc(db, 'posters', x.id)); return; }
+  if (!x.apply) return;
+  const data = {};
+  Object.keys(x.apply).forEach(k => {
+    data[k] = (x.apply[k] === 'NOW') ? serverTimestamp() : x.apply[k];
+  });
+  await updateDoc(doc(db, x.coll || 'posters', x.id), data);
+}
+
+async function fixHealth(i) {
+  const x = healthFindings[i];
+  if (!x) return;
+  if (x.del && !confirm('Delete this duplicate poster? Checkout history is kept.')) return;
+  try { await applyHealthFix_(x); openAdminHealth(); }
+  catch (e) { showMsg($('admMsg'), 'error', 'Could not fix that: ' + (e.message || e)); }
+}
+
+async function fixAllHealth() {
+  const list = healthFindings.filter(x => x.apply);   // never bulk-deletes
+  if (!list.length) return;
+  if (!confirm('Apply ' + list.length + ' automatic fixes? Nothing will be deleted.')) return;
+  const body = $('admBody');
+  body.innerHTML = '<p class="subtitle">Fixing…</p>';
+  let done = 0, failed = 0;
+  for (const x of list) {
+    try { await applyHealthFix_(x); done++; } catch (e) { failed++; }
+  }
+  showMsg($('admMsg'), failed ? 'error' : 'success',
+    'Fixed ' + done + ' item' + (done === 1 ? '' : 's') + '.' + (failed ? ' ' + failed + ' could not be changed.' : ''));
+  openAdminHealth();
+}
+
 /* ---------------- expose for inline handlers ---------------- */
 Object.assign(window, {
   show, requireLogin, toggleHomeStatus, loadHomeStatus,
@@ -2205,6 +2432,7 @@ Object.assign(window, {
   openAdminIssues, resolveIssue,
   openImport, previewImport, runImport,
   openAdminUsers, setUserAdmin, setUserActive, fixImageLinks,
+  openAdminHealth, fixHealth, fixAllHealth,
   approveUser, recheckApproval, refreshPendingBadge, filterUsers
 });
 
