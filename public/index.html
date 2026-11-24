@@ -287,14 +287,14 @@
 
     /* ---------- theme picker ---------- */
     .updatebar[hidden]{display:none !important;}
-    .updatebar{position:fixed; left:12px; right:12px; z-index:60; display:flex; align-items:center; gap:12px;
-      bottom:calc(var(--nav-h) + env(safe-area-inset-bottom) + 12px);
-      max-width:536px; margin:0 auto; padding:13px 14px; border-radius:15px;
-      background:var(--chrome); color:#fff; box-shadow:var(--shadow-lg); font-size:15px; font-weight:600;}
+    .updatebar{position:sticky; top:0; z-index:40; display:flex; align-items:center; gap:12px;
+      padding:12px 16px calc(12px + env(safe-area-inset-left, 0px) * 0);
+      background:var(--accent); color:#fff; font-size:15px; font-weight:700;
+      box-shadow:0 4px 14px rgba(16,24,40,.18);}
     .updatebar span{flex:1 1 auto; line-height:1.3;}
     .updatebar button{flex:0 0 auto; border:none; cursor:pointer; font:inherit; font-weight:800;
-      background:var(--accent); color:#fff; padding:10px 15px; border-radius:11px;}
-    .updatebar button.later{background:transparent; color:#aab4c4; font-size:22px; padding:4px 8px; line-height:1;}
+      background:#fff; color:var(--accent); padding:9px 15px; border-radius:10px;}
+    .updatebar button.later{background:transparent; color:rgba(255,255,255,.75); font-size:22px; padding:4px 8px; line-height:1;}
     @media print{ .updatebar{display:none !important;} }
     .diagbox{margin-top:12px; padding:12px 13px; border-radius:12px;
       background:var(--accent-soft); border:1px solid color-mix(in srgb, var(--accent) 22%, var(--surface));}
@@ -318,11 +318,13 @@
     /* ---------- bottom navigation ---------- */
     .bottomnav{
       position:fixed; left:0; right:0; bottom:0; z-index:30;
-      background:color-mix(in srgb, var(--surface) 92%, transparent);
-      backdrop-filter:saturate(180%) blur(14px); -webkit-backdrop-filter:saturate(180%) blur(14px);
-      border-top:1px solid var(--border); box-shadow:0 -6px 20px rgba(16,24,40,.10);
+      background:var(--surface);
+      border-top:1px solid var(--border); box-shadow:0 -4px 16px rgba(16,24,40,.08);
       padding-bottom:env(safe-area-inset-bottom);
+      transition:transform .25s ease;
     }
+    /* Hide-on-scroll: the bar slides fully off, safe area included. */
+    .bottomnav.tucked{ transform:translateY(calc(100% + 2px)); }
     .bottomnav-inner{max-width:560px; margin:0 auto; display:grid; grid-template-columns:repeat(5,1fr);}
     .navbtn{
       background:none; border:none; cursor:pointer; padding:9px 4px 10px; font:inherit;
@@ -406,6 +408,12 @@
       </div>
     </div>
   </header>
+
+  <div id="updateBar" class="updatebar" hidden>
+    <span>A new version is available.</span>
+    <button type="button" onclick="applyUpdate()">Update now</button>
+    <button type="button" class="later" onclick="dismissUpdate()" aria-label="Later">&times;</button>
+  </div>
 
   <div class="wrap">
 
@@ -609,6 +617,10 @@
       <div class="swatches" id="swatches"></div>
       <label style="margin-top:20px;">Display mode</label>
       <button class="btn secondary" id="modeToggleBtn" onclick="toggleMode()">Switch to night mode</button>
+      <label style="margin-top:20px;">Bottom menu</label>
+      <p class="hint" style="margin-top:0;">Keep the menu on screen at all times, or let it slide out of the way while you read and come back when you scroll up.</p>
+      <button class="btn secondary" id="navAlwaysBtn" onclick="setNavMode('always')">Always visible</button>
+      <button class="btn secondary" id="navHideBtn" onclick="setNavMode('hide')">Hide while scrolling down</button>
       <p class="hint">Tip: on your phone you can add this app to your Home Screen from the browser menu &mdash; it then opens like a normal app.</p>
     </div>
 
@@ -690,6 +702,9 @@ function show(v, isBack) {
   state.view = v;
   VIEWS.forEach(n => { const el = $('view-' + n); if (el) el.classList.toggle('hidden', n !== v); });
   if (v === 'home') { loadHomeStatus(); refreshPendingBadge(); }
+  const nav = document.querySelector('.bottomnav');
+  if (nav) nav.classList.remove('tucked');
+  lastScrollY = 0;
   markNav(v);
   const bb = $('backBtn');
   if (bb) bb.style.display = (v === 'home' || !navStack.length) ? 'none' : '';
@@ -2084,8 +2099,39 @@ function paintSwatches() {
 function openSettings() {
   show('settings');
   paintSwatches();
+  paintNavMode();
   const tb = $('modeToggleBtn'); if (tb) tb.textContent = isDark() ? 'Switch to day mode' : 'Switch to night mode';
 }
+
+/* ---------------- bottom menu behaviour ---------------- */
+// 'always' keeps the menu on screen; 'hide' tucks it away while reading down
+// a long page and brings it back on the first upward scroll.
+const navMode = () => { try { return localStorage.getItem('cartNavMode') || 'always'; } catch (e) { return 'always'; } };
+
+function setNavMode(mode) {
+  try { localStorage.setItem('cartNavMode', mode); } catch (e) {}
+  const nav = document.querySelector('.bottomnav');
+  if (nav && mode === 'always') nav.classList.remove('tucked');
+  paintNavMode();
+}
+function paintNavMode() {
+  const m = navMode();
+  const a = $('navAlwaysBtn'), b = $('navHideBtn');
+  if (a) a.classList.toggle('active', m === 'always');
+  if (b) b.classList.toggle('active', m === 'hide');
+}
+
+let lastScrollY = 0;
+window.addEventListener('scroll', () => {
+  const nav = document.querySelector('.bottomnav');
+  if (!nav) return;
+  if (navMode() !== 'hide') { nav.classList.remove('tucked'); lastScrollY = window.scrollY; return; }
+  const y = Math.max(0, window.scrollY);
+  // Near the top, or scrolling up, the menu should be there.
+  if (y < 80 || y < lastScrollY - 4) nav.classList.remove('tucked');
+  else if (y > lastScrollY + 6) nav.classList.add('tucked');
+  lastScrollY = y;
+}, { passive: true });
 
 /* ---------------- bottom navigation ---------------- */
 function navGo(which) {
@@ -2616,7 +2662,7 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) chec
 Object.assign(window, {
   show, requireLogin, toggleHomeStatus, loadHomeStatus,
   goBack, signInGoogle, signInEmail, signUpEmail, resetPassword, saveProfile, doLogout,
-  setTheme, toggleMode, openSettings, navGo,
+  setTheme, toggleMode, openSettings, navGo, setNavMode,
   openCheckout, openReturn, openDashboard, loadDashboard,
   openAdmin, saveSettings, addCarts,
   openPosterView, openPosterCheckout, posterImgFail, schedImgFail,
@@ -2642,12 +2688,6 @@ try { history.replaceState({ app: true }, ''); } catch (e) {}
   show('home');
 })();
 </script>
-  <div id="updateBar" class="updatebar" hidden>
-    <span>A new version is available.</span>
-    <button type="button" onclick="applyUpdate()">Update now</button>
-    <button type="button" class="later" onclick="dismissUpdate()" aria-label="Later">&times;</button>
-  </div>
-
   <div id="printSheet" class="print-sheet" aria-hidden="true"></div>
 
   <nav class="bottomnav">
