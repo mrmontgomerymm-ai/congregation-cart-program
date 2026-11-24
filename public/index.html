@@ -286,6 +286,7 @@
     .sched-empty{color:var(--text-2); font-weight:600;}
 
     /* ---------- theme picker ---------- */
+    .updatebar[hidden]{display:none !important;}
     .updatebar{position:fixed; left:12px; right:12px; z-index:60; display:flex; align-items:center; gap:12px;
       bottom:calc(var(--nav-h) + env(safe-area-inset-bottom) + 12px);
       max-width:536px; margin:0 auto; padding:13px 14px; border-radius:15px;
@@ -295,6 +296,13 @@
       background:var(--accent); color:#fff; padding:10px 15px; border-radius:11px;}
     .updatebar button.later{background:transparent; color:#aab4c4; font-size:22px; padding:4px 8px; line-height:1;}
     @media print{ .updatebar{display:none !important;} }
+    .diagbox{margin-top:12px; padding:12px 13px; border-radius:12px;
+      background:var(--accent-soft); border:1px solid color-mix(in srgb, var(--accent) 22%, var(--surface));}
+    .diagbox b{display:block; font-size:13px; letter-spacing:.03em; text-transform:uppercase; color:var(--accent); margin-bottom:8px;}
+    .diagrow{display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:9px; font-size:15px; line-height:1.35;}
+    .diagrow:last-child{margin-bottom:0;}
+    .diagrow span{flex:1 1 180px; min-width:0;}
+    .diagrow .btn{width:auto; min-height:auto; margin:0; padding:9px 14px; font-size:14px; flex:0 0 auto;}
     .monthrow{display:flex; gap:10px; align-items:stretch;}
     .monthrow input{flex:1 1 auto; min-width:0;}
     .monthclear{flex:0 0 auto; width:auto; margin:0; padding:0 16px; border:2px solid var(--border);
@@ -608,7 +616,7 @@
     <div id="view-admin" class="card hidden">
       <button class="btn ghost" style="margin:0 0 4px; padding-left:0;" onclick="goBack()">&larr; Back</button>
       <p class="title">Admin</p>
-      <p class="subtitle">Set up the fleet and app settings. Posters, service year and languages arrive in the next phase.</p>
+      <p class="subtitle">Settings, carts, posters and people.</p>
       <div id="admMsg" class="msg"></div>
       <div id="admBody"></div>
     </div>
@@ -1924,26 +1932,115 @@ async function deletePoster() {
 }
 
 /* ---------------- Admin: issue reports ---------------- */
+/* ---------------- Reported issues: automatic diagnosis & repair ---------------- */
+// Each reported issue is matched against the data check by what the person
+// described, so an administrator sees the likely cause and can repair it
+// without hunting for it.
+const ISSUE_SIGNS = [
+  { kinds: ['shareLink', 'noImage'],
+    words: ['image','picture','photo','cover','blank','missing','not show','doesn\'t show','does not show','broken'] },
+  { kinds: ['fbcFeatured', 'altFlagged', 'fbcUnflagged', 'backwards', 'badStart'],
+    words: ['schedule','month','featured','wrong poster','bible course','rotation','jan','feb','service year'] },
+  { kinds: ['duplicate'],
+    words: ['duplicate','twice','two of','same poster','repeated','double'] },
+  { kinds: ['badInv', 'orphanCheckout'],
+    words: ['available','unavailable','inventory','copies','out of','none left','can\'t check out','cannot check out'] },
+  { kinds: ['orphanCart', 'orphanCheckout'],
+    words: ['cart','stuck','return','checked out','won\'t return','cannot return','still out','overdue'] },
+  { kinds: ['noTitle', 'noRef'],
+    words: ['untitled','no name','blank name','no id','unnamed'] }
+];
+
+function diagnoseIssue_(issue, findings) {
+  const text = String(issue.description || '').toLowerCase();
+  const kinds = {};
+  ISSUE_SIGNS.forEach(sig => {
+    if (sig.words.some(w => text.indexOf(w) > -1)) sig.kinds.forEach(k => { kinds[k] = true; });
+  });
+  return findings.filter(f => kinds[f.kind]);
+}
+
 async function openAdminIssues() {
   show('admin'); clearMsg($('admMsg'));
-  const body = $('admBody'); body.innerHTML = '<p class="subtitle">Loading\u2026</p>';
+  const body = $('admBody');
+  body.innerHTML = '<p class="subtitle">Loading reports and checking the data…</p>';
   try {
     const snap = await getDocs(collection(db, 'issues'));
     const list = [];
     snap.forEach(d => list.push(Object.assign({ id: d.id }, d.data())));
     list.sort((a, b) => ((b.createdAt && b.createdAt.seconds) || 0) - ((a.createdAt && a.createdAt.seconds) || 0));
-    body.innerHTML =
-      '<button class="btn ghost" style="padding-left:0;" onclick="openAdmin()">&larr; Admin menu</button>' +
-      '<div class="psection-head first">Reported issues</div>' +
-      (list.length ? list.map(i =>
-        '<div class="crow"><div class="top"><div class="cn">' + esc(titleCaseName(i.name) || 'Someone') + '</div>' +
-        (i.resolved ? '<span class="tag avail">Resolved</span>' : '<span class="tag over">Open</span>') + '</div>' +
-        '<div class="cg">' + esc(i.congregation || '') + ' \u00b7 ' + esc(fmtDate(i.createdAt)) + '</div>' +
+
+    await runHealthScan_();                  // fills healthFindings
+    const open = list.filter(i => !i.resolved);
+    const repairable = [];
+    open.forEach(i => { diagnoseIssue_(i, healthFindings).forEach(f => {
+      if (f.apply && repairable.indexOf(f) === -1) repairable.push(f);
+    }); });
+
+    let html = '<button class="btn ghost" style="padding-left:0;" onclick="openAdmin()">← Admin menu</button>' +
+      '<div class="psection-head first">Reported issues</div>';
+
+    html += '<div class="' + (repairable.length ? 'reminder' : 'guide-intro') + '">' +
+      (repairable.length
+        ? '<b>' + repairable.length + ' repair' + (repairable.length === 1 ? '' : 's') +
+          ' match what people reported.</b><br>Each one below shows its likely cause.'
+        : (open.length
+            ? '<b>Nothing in the data matches these reports.</b><br>They may need a look by hand, or they are already resolved.'
+            : '<b>No open reports.</b><br>The data was checked as well and matched nothing.')) +
+      '</div>' +
+      (repairable.length > 1 ? '<button class="btn" onclick="repairReported()">Repair all ' + repairable.length + ' matched problems</button>' : '') +
+      '<button class="btn secondary" onclick="openAdminHealth()">Open the full data check</button>';
+
+    html += list.length ? list.map(i => {
+      const causes = i.resolved ? [] : diagnoseIssue_(i, healthFindings);
+      return '<div class="crow"><div class="top"><div class="cn">' + esc(titleCaseName(i.name) || 'Someone') + '</div>' +
+        (i.resolved ? '<span class="tag avail">Resolved</span>'
+         : (causes.length ? '<span class="tag out">Cause found</span>' : '<span class="tag over">Open</span>')) + '</div>' +
+        '<div class="cg">' + esc(i.congregation || '') + ' · ' + esc(fmtDate(i.createdAt)) + '</div>' +
         '<p style="margin:10px 0 0; line-height:1.5;">' + esc(i.description) + '</p>' +
-        (i.resolved ? '' : '<button class="btn secondary" style="margin-top:10px;" onclick="resolveIssue(\'' + esc(i.id) + '\')">Mark resolved</button>') +
-        '</div>').join('') : '<p class="subtitle">No issues have been reported.</p>');
-  } catch (e) { body.innerHTML = '<p class="subtitle">Could not load issues.</p>'; }
+        (causes.length
+          ? '<div class="diagbox"><b>Likely cause' + (causes.length === 1 ? '' : 's') + '</b>' +
+            causes.map(c => {
+              const idx = healthFindings.indexOf(c);
+              return '<div class="diagrow"><span>' + esc(c.what) + '</span>' +
+                (c.apply ? '<button class="btn secondary" onclick="fixHealth(' + idx + ')">' + esc(c.fix) + '</button>'
+                         : '<button class="btn secondary" onclick="openAdminHealth()">Review</button>') + '</div>';
+            }).join('') + '</div>'
+          : '') +
+        (i.resolved ? '' : '<button class="btn ghost" style="margin-top:10px;" onclick="resolveIssue(\'' + esc(i.id) + '\')">Mark resolved</button>') +
+        '</div>';
+    }).join('') : '<p class="subtitle">No issues have been reported.</p>';
+
+    body.innerHTML = html;
+  } catch (e) {
+    body.innerHTML = '<p class="subtitle">Could not load issues: ' + esc(e.message || e) + '</p>';
+  }
 }
+
+// Repairs only what the reports actually point at, and never deletes.
+async function repairReported() {
+  const snap = await getDocs(collection(db, 'issues'));
+  const open = [];
+  snap.forEach(d => { const v = d.data(); if (!v.resolved) open.push(v); });
+  const todo = [];
+  open.forEach(i => { diagnoseIssue_(i, healthFindings).forEach(f => {
+    if (f.apply && todo.indexOf(f) === -1) todo.push(f);
+  }); });
+  if (!todo.length) return;
+  if (!confirm('Repair ' + todo.length + ' matched problem' + (todo.length === 1 ? '' : 's') + '? Nothing will be deleted.')) return;
+
+  const body = $('admBody');
+  body.innerHTML = '<p class="subtitle">Repairing…</p>';
+  let done = 0, failed = 0;
+  for (const f of todo) {
+    try { await applyHealthFix_(f); done++; } catch (e) { failed++; }
+  }
+  showMsg($('admMsg'), failed ? 'error' : 'success',
+    'Repaired ' + done + ' problem' + (done === 1 ? '' : 's') + '.' +
+    (failed ? ' ' + failed + ' could not be changed.' : ' Review the reports and mark them resolved.'));
+  openAdminIssues();
+}
+
 async function resolveIssue(id) {
   try { await updateDoc(doc(db, 'issues', id), { resolved: true }); openAdminIssues(); }
   catch (e) { showMsg($('admMsg'), 'error', 'Could not update: ' + (e.message || e)); }
@@ -2277,6 +2374,17 @@ async function openAdminHealth() {
   const body = $('admBody');
   body.innerHTML = '<p class="subtitle">Checking your data…</p>';
   try {
+    const counts = await runHealthScan_();
+    renderHealth(counts.posters, counts.carts);
+  } catch (e) {
+    body.innerHTML = '<p class="subtitle">Could not run the check: ' + esc(e.message || e) + '</p>';
+  }
+}
+
+// Scans everything and fills healthFindings. Shared by the data check and the
+// reported-issues screen, so both work from exactly the same evidence.
+async function runHealthScan_() {
+  {
     const [posters, carts] = await Promise.all([allPosters(), allCarts()]);
     let pcs = [];
     try {
@@ -2394,9 +2502,7 @@ async function openAdminHealth() {
     });
 
     healthFindings = f;
-    renderHealth(posters.length, carts.length);
-  } catch (e) {
-    body.innerHTML = '<p class="subtitle">Could not run the check: ' + esc(e.message || e) + '</p>';
+    return { posters: posters.length, carts: carts.length };
   }
 }
 
@@ -2517,7 +2623,7 @@ Object.assign(window, {
   openSchedule, loadSchedule, stepSchedule, printSchedule,
   openIssues, submitIssue,
   openAdminPosters, editPoster, savePoster, deletePoster,
-  openAdminIssues, resolveIssue,
+  openAdminIssues, resolveIssue, repairReported,
   openImport, previewImport, runImport,
   openAdminUsers, setUserAdmin, setUserActive, fixImageLinks,
   openAdminHealth, fixHealth, fixAllHealth, clearMonth,
