@@ -1446,12 +1446,24 @@ function normalizeImageUrl(raw) {
   return link;
 }
 
-function posterImgHTML(p) {
+// The Free Bible Course poster ships with the app, so it always has a cover
+// even if no image link was entered for it.
+const FBC_IMAGE = 'free-bible-course.png';
+function posterImageSrc(p) {
   const link = String(p.imageLink || '').trim();
   const low = link.toLowerCase();
-  if (!link) return '<div class="pimg"><div class="pph">Image coming soon</div></div>';
+  if (!link || low === 'tba' || low === 'tbd') {
+    return p.isFbc ? FBC_IMAGE : '';
+  }
+  return normalizeImageUrl(link);
+}
+
+function posterImgHTML(p) {
+  const src = posterImageSrc(p);
+  if (src) return '<div class="pimg"><img alt="" loading="lazy" src="' + esc(src) + '" onerror="posterImgFail(this)"></div>';
+  const low = String(p.imageLink || '').trim().toLowerCase();
   if (low === 'tba' || low === 'tbd') return '<div class="pimg"><div class="pph">TBA</div></div>';
-  return '<div class="pimg"><img alt="" loading="lazy" src="' + esc(normalizeImageUrl(link)) + '" onerror="posterImgFail(this)"></div>';
+  return '<div class="pimg"><div class="pph">Image coming soon</div></div>';
 }
 function posterImgFail(img) { img.parentNode.innerHTML = '<div class="pph">Information unavailable</div>'; }
 
@@ -1734,11 +1746,12 @@ async function loadSchedule(offset) {
 }
 
 function schedImg(p, forPrint) {
-  const link = String(p.imageLink || '').trim(), low = link.toLowerCase();
-  if (!link) return '<div class="sched-ph">Image coming soon</div>';
+  const src = posterImageSrc(p);
+  if (src) return '<img alt="" src="' + esc(src) + '"' +
+    (forPrint ? '' : ' onerror="schedImgFail(this)"') + '>';
+  const low = String(p.imageLink || '').trim().toLowerCase();
   if (low === 'tba' || low === 'tbd') return '<div class="sched-ph">TBA</div>';
-  return '<img alt="" src="' + esc(normalizeImageUrl(link)) + '"' +
-         (forPrint ? '' : ' onerror="schedImgFail(this)"') + '>';
+  return '<div class="sched-ph">Image coming soon</div>';
 }
 function schedImgFail(img) { img.parentNode.innerHTML = '<div class="sched-ph">Image unavailable</div>'; }
 // A poster's reference line. Edition and Publication ID are optional — special
@@ -2517,7 +2530,7 @@ async function runHealthScan_() {
             fix: 'Convert to a direct link', apply: { imageLink: norm } });
         }
       }
-      if (!p.isFbc && !link) {
+      if (!p.isFbc && !link) {   // the Free Bible Course cover ships with the app
         f.push({ kind: 'noImage', id: p.id, severity: 'low',
           what: '"' + (p.title || '(untitled)') + '" has no image link.',
           why: 'Its cell shows "Image coming soon".',
