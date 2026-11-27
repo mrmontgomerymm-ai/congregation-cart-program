@@ -225,8 +225,17 @@
     .pcard:active{transform:scale(.985);}
     .pcard.out{opacity:.6;} .pcard-off{opacity:.5; cursor:not-allowed;}
     .pimg{width:100%; aspect-ratio:2/3; border-radius:10px; overflow:hidden; background:var(--surface-3);
-      display:flex; align-items:center; justify-content:center; margin-bottom:9px; padding:4px;}
-    .pimg img{max-width:100%; max-height:100%; width:auto; height:auto; object-fit:contain; border-radius:6px;}
+      display:flex; align-items:center; justify-content:center; margin-bottom:9px;}
+    .pimg img{width:100%; height:100%; object-fit:cover;}
+    /* Variants of one publication share a card you can swipe through. */
+    .pswipe{display:flex; overflow-x:auto; scroll-snap-type:x mandatory; scrollbar-width:none;
+      -webkit-overflow-scrolling:touch; border-radius:10px; margin-bottom:7px;}
+    .pswipe::-webkit-scrollbar{display:none;}
+    .pswipe .pimg{flex:0 0 100%; scroll-snap-align:center; margin-bottom:0;}
+    .pdots{display:flex; justify-content:center; gap:6px; margin-bottom:7px;}
+    .pdots i{width:7px; height:7px; border-radius:50%; background:var(--border); display:block; transition:background .2s ease;}
+    .pdots i.on{background:var(--accent);}
+    .pswipe-hint{font-size:12px; color:var(--text-2); text-align:center; margin-bottom:5px;}
     .pph{font-size:15px; color:var(--text-2); padding:8px; text-align:center;}
     .ptitle{font-size:19px; font-weight:700; line-height:1.25;}
     .pmeta{font-size:16px; color:var(--text-2); margin-top:3px;}
@@ -1525,14 +1534,17 @@ function groupPosters(list, sy) {
   ['watchtower', 'awake', 'special'].forEach(k => g[k].sort(byTitle));
   return g;
 }
-function renderSections(list, sy, cardFn) {
+// grouped: variants of one publication share a card, and cardFn receives the
+// whole group instead of a single poster.
+function renderSections(list, sy, cardFn, grouped) {
   const g = groupPosters(list, sy);
   let html = '', first = true;
   POSTER_SECTIONS.forEach(sec => {
     const items = g[sec.key];
     if (!items.length) return;
     html += '<div class="psection-head' + (first ? ' first' : '') + '">' + esc(sec.label) + '</div><div class="pgrid">';
-    items.forEach(p => { html += cardFn(p); });
+    if (grouped) groupVariants(items).forEach(grp => { html += cardFn(grp); });
+    else items.forEach(p => { html += cardFn(p); });
     html += '</div>';
     first = false;
   });
@@ -1551,6 +1563,60 @@ function emptyPostersHTML() {
       ? '<button class="btn" onclick="openAdminPosters()">Add posters now</button>' : '');
 }
 
+// Variants of one publication (the Free Bible Course and its alternates)
+// share a single card you can swipe through, instead of repeating the title
+// down the list.
+const escAttr = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+function variantKey(p) {
+  let t = String(p.title || '').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+  t = t.replace(/\b(alt|alternate|alternative|second|2nd|other)\b\s*\d*\s*$/, '').trim();
+  t = t.replace(/\s\d{1,2}$/, '').trim();
+  return t;
+}
+
+// Collapses variants into one entry, keeping the plain edition first.
+function groupVariants(list) {
+  const by = {}, order = [];
+  list.forEach(p => {
+    const k = variantKey(p);
+    if (!by[k]) { by[k] = []; order.push(k); }
+    by[k].push(p);
+  });
+  return order.map(k => {
+    const group = by[k];
+    group.sort((a, b) => {
+      const av = ALT_WORDS.test(String(a.title || '')) || !!a.tag;
+      const bv = ALT_WORDS.test(String(b.title || '')) || !!b.tag;
+      if (av !== bv) return av ? 1 : -1;
+      return String(a.title || '').localeCompare(String(b.title || ''));
+    });
+    return group;
+  });
+}
+
+// Wires the dots and the reference line to whichever slide is in view.
+function bindSwipeCards(root) {
+  (root || document).querySelectorAll('.pswipe').forEach(strip => {
+    const card = strip.closest('.pcard');
+    if (!card) return;
+    const dots = card.querySelectorAll('.pdots i');
+    const refEl = card.querySelector('[data-variant-ref]');
+    const labels = (refEl && refEl.getAttribute('data-variant-ref') || '').split('|');
+    let last = -1;
+    const sync = () => {
+      const i = Math.round(strip.scrollLeft / Math.max(1, strip.clientWidth));
+      if (i === last) return;
+      last = i;
+      dots.forEach((d, n) => d.classList.toggle('on', n === i));
+      if (refEl && labels[i] !== undefined) refEl.textContent = labels[i];
+    };
+    strip.addEventListener('scroll', () => { window.requestAnimationFrame(sync); }, { passive: true });
+    sync();
+  });
+}
+
 /* ---------------- View Posters ---------------- */
 async function openPosterView() {
   show('posters'); clearMsg($('pvMsg'));
@@ -1561,7 +1627,8 @@ async function openPosterView() {
     const now = new Date();
     $('pvSub').textContent = MONTH_NAMES[now.getMonth()] + ' ' + now.getFullYear() +
                              '  \u00b7  Service Year ' + sy.endYear;
-    body.innerHTML = renderSections(dedupePosters(posters), sy, (p) => {
+    body.innerHTML = renderSections(dedupePosters(posters), sy, (grp) => {
+      const p = grp[0];
       const iv = inventoryFor(p, counts);
       const badge = featuredNow(p) ? '<span class="pbadge">\u2605 Featured</span>' : '';
       const right = p.isFbc ? '<span class="pbadge blue">Required</span>'
@@ -1569,14 +1636,27 @@ async function openPosterView() {
       const avail = p.isFbc ? '<div class="pmeta">Always available</div>'
                   : (iv.error ? '<div class="pmeta" style="color:var(--danger)">Inventory information unavailable at this time</div>'
                   : '<div class="pmeta"><b>' + iv.available + ' available</b> of ' + iv.total + '</div>');
-      return '<div class="pcard' + (iv.unavailable ? ' out' : '') + '">' + badge + right + posterImgHTML(p) +
+
+      // One image, or a swipeable strip when this publication has alternates.
+      let media, dots = '', hint = '';
+      const refs = grp.map(v => posterRefLine(v));
+      if (grp.length > 1) {
+        media = '<div class="pswipe">' + grp.map(v => posterImgHTML(v)).join('') + '</div>';
+        dots = '<div class="pdots">' + grp.map((v, i) => '<i class="' + (i ? '' : 'on') + '"></i>').join('') + '</div>';
+        hint = '<div class="pswipe-hint">Swipe for ' + (grp.length - 1) + ' more</div>';
+      } else {
+        media = posterImgHTML(p);
+      }
+
+      return '<div class="pcard' + (iv.unavailable ? ' out' : '') + '">' + badge + right + media + dots + hint +
              '<div class="ptitle">' + esc(p.title || '(untitled)') + '</div>' +
-             (posterRefLine(p) ? '<div class="pmeta">' + esc(posterRefLine(p)) + '</div>' : '') + avail +
+             '<div class="pmeta" data-variant-ref="' + escAttr(refs.join('|')) + '">' + esc(refs[0] || '') + '</div>' + avail +
              (p.featuredStart ? '<div class="pmeta">' + esc(fmtYM(p.featuredStart)) +
                 (p.featuredEnd && p.featuredEnd !== p.featuredStart ? ' \u2013 ' + esc(fmtYM(p.featuredEnd)) : '') + '</div>' : '') +
              '<div class="plang">' + (p.language === 'S' ? 'Spanish' : 'English') + '</div>' +
              '</div>';
-    });
+    }, true);
+    bindSwipeCards(body);
   } catch (e) { body.innerHTML = ''; showMsg($('pvMsg'), 'error', 'Could not load posters.'); }
 }
 
