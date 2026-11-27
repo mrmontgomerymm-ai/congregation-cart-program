@@ -1446,15 +1446,24 @@ function normalizeImageUrl(raw) {
   return link;
 }
 
-// The Free Bible Course poster ships with the app, so it always has a cover
-// even if no image link was entered for it.
+// Both Free Bible Course covers ship with the app, so these posters always
+// have artwork even when no image link was entered. The alternate is matched
+// by its title, since it sits in the normal rotation rather than being flagged.
 const FBC_IMAGE = 'free-bible-course.png';
+const FBC_ALT_IMAGE = 'free-bible-course-alt.png';
+const ALT_WORDS = /\b(alt|alternate|alternative|second|2nd|other)\b/i;
+
+function bundledPosterImage(p) {
+  const title = String(p.title || '');
+  const isCourse = p.isFbc || /free\s+bible\s+course/i.test(title);
+  if (!isCourse) return '';
+  return ALT_WORDS.test(title) ? FBC_ALT_IMAGE : FBC_IMAGE;
+}
+
 function posterImageSrc(p) {
   const link = String(p.imageLink || '').trim();
   const low = link.toLowerCase();
-  if (!link || low === 'tba' || low === 'tbd') {
-    return p.isFbc ? FBC_IMAGE : '';
-  }
+  if (!link || low === 'tba' || low === 'tbd') return bundledPosterImage(p);
   return normalizeImageUrl(link);
 }
 
@@ -2530,7 +2539,7 @@ async function runHealthScan_() {
             fix: 'Convert to a direct link', apply: { imageLink: norm } });
         }
       }
-      if (!p.isFbc && !link) {   // the Free Bible Course cover ships with the app
+      if (!link && !bundledPosterImage(p)) {
         f.push({ kind: 'noImage', id: p.id, severity: 'low',
           what: '"' + (p.title || '(untitled)') + '" has no image link.',
           why: 'Its cell shows "Image coming soon".',
