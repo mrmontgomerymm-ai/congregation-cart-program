@@ -1451,7 +1451,7 @@ function normalizeImageUrl(raw) {
 // by its title, since it sits in the normal rotation rather than being flagged.
 const FBC_IMAGE = 'free-bible-course.png';
 const FBC_ALT_IMAGE = 'free-bible-course-alt.png';
-const ALT_WORDS = /\b(alt|alternate|alternative|second|2nd|other)\b/i;
+const ALT_WORDS = /(\balt\b|\balt\s*\d|\balternate|\balternative|\bsecond\b|\b2nd\b|\bother\b|\s\d{1,2}\s*$)/i;
 
 function bundledPosterImage(p) {
   const title = String(p.title || '');
@@ -1767,10 +1767,28 @@ function schedImgFail(img) { img.parentNode.innerHTML = '<div class="sched-ph">I
 // request items often have neither — so the pieces are joined only when present
 // and no stray separators are left behind.
 function posterRefLine(p) {
+  const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  const title = norm(p.title);
+  const seen = {};
   const bits = [];
-  if (p.edition) bits.push(p.edition);
-  if (p.pubId) bits.push(p.pubId);
-  if (!bits.length && p.tag) bits.push(p.tag);
+  // A reference that only echoes the title adds nothing, so it is left out.
+  const add = (v) => {
+    let s = String(v || '').trim();
+    let n = norm(s);
+    if (!n) return;
+    if (n === title) return;                    // a bare echo of the title
+    if (title && n.startsWith(title + ' ')) {    // "Free Bible Course 2" -> "Alt 2"
+      const rest = n.slice(title.length).trim();
+      if (/^\d{1,2}$/.test(rest)) { s = 'Alt ' + rest; n = norm(s); }
+      else { s = rest; n = norm(s); }
+    }
+    if (!n || seen[n]) return;
+    seen[n] = true;
+    bits.push(s);
+  };
+  add(p.edition);
+  add(p.pubId);
+  if (!bits.length) add(p.tag);
   return bits.join('  \u00b7  ');
 }
 
@@ -2475,7 +2493,7 @@ async function runHealthScan_() {
 
     // An alternate Bible Course poster wrongly flagged as THE Free Bible Course
     // is held out of the rotation; the real one left unflagged fills every slot.
-    posters.filter(p => p.isFbc && /\b(alt|alternate|alternative|second|2nd|other)\b/i.test(String(p.title || ''))).forEach(p => {
+    posters.filter(p => p.isFbc && ALT_WORDS.test(String(p.title || ''))).forEach(p => {
       f.push({
         kind: 'altFlagged', id: p.id, severity: 'high',
         what: '"' + p.title + '" is flagged as the Free Bible Course poster.',
@@ -2484,7 +2502,7 @@ async function runHealthScan_() {
       });
     });
     posters.filter(p => !p.isFbc && /free bible course/i.test(String(p.title || '')) &&
-                        !/\b(alt|alternate|alternative|second|2nd|other)\b/i.test(String(p.title || ''))).forEach(p => {
+                        !ALT_WORDS.test(String(p.title || ''))).forEach(p => {
       f.push({
         kind: 'fbcUnflagged', id: p.id, severity: 'medium',
         what: '"' + p.title + '" is not flagged as the Free Bible Course poster.',
